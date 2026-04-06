@@ -1,0 +1,10 @@
+name = "ttrade-worker"
+main = "worker/src/worker.ts"
+compatibility_date = "2026-04-03"
+compatibility_flags = ["nodejs_compat"]
+
+[[d1_databases]]
+binding = "DB"
+database_name = "ttrade-db"
+database_id = "PLACEHOLDER_CREATE_VIA_WRANGLER"
+migrations_dir = "worker/drizzle"
