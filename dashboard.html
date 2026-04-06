@@ -1,0 +1,513 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TTrade v1.1 — Live Dashboard</title>
+<style>
+  :root {
+    --bg: #0a0e17;
+    --surface: #111827;
+    --surface2: #1a2236;
+    --border: #1e293b;
+    --text: #e2e8f0;
+    --text-dim: #64748b;
+    --green: #22c55e;
+    --green-dim: #166534;
+    --red: #ef4444;
+    --red-dim: #7f1d1d;
+    --amber: #f59e0b;
+    --amber-dim: #78350f;
+    --blue: #3b82f6;
+    --blue-dim: #1e3a5f;
+    --purple: #a78bfa;
+    --cyan: #06b6d4;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+  }
+
+  .app {
+    display: grid;
+    grid-template-columns: 240px 1fr;
+    grid-template-rows: 56px 1fr;
+    min-height: 100vh;
+  }
+
+  .header {
+    grid-column: 1 / -1;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 20px;
+  }
+
+  .header h1 { font-size: 16px; font-weight: 700; letter-spacing: 2px; }
+  .header .status { display: flex; gap: 16px; font-size: 11px; color: var(--text-dim); }
+  .header .dot-live { color: var(--green); animation: pulse 2s infinite; }
+  .header .dot-off { color: var(--red); }
+  @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+
+  .sidebar {
+    background: var(--surface);
+    border-right: 1px solid var(--border);
+    padding: 16px;
+    overflow-y: auto;
+    font-size: 12px;
+  }
+
+  .sidebar h3 { font-size: 10px; text-transform: uppercase; letter-spacing: 1.5px; color: var(--text-dim); margin-bottom: 8px; }
+  .sidebar .stat { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid var(--border); }
+  .sidebar .stat .label { color: var(--text-dim); }
+  .sidebar .stat .val { font-weight: 600; }
+  .sidebar .section { margin-bottom: 20px; }
+
+  .refresh-info { font-size: 10px; color: var(--text-dim); margin-top: 8px; }
+  .refresh-info .countdown { color: var(--cyan); }
+
+  .main { padding: 16px; overflow-y: auto; display: flex; flex-direction: column; gap: 16px; }
+
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+  .card-header { padding: 12px 16px; border-bottom: 1px solid var(--border); font-size: 11px; text-transform: uppercase; letter-spacing: 1.5px; color: var(--text-dim); display: flex; justify-content: space-between; align-items: center; }
+  .card-body { padding: 16px; }
+
+  .state-display { display: flex; gap: 12px; align-items: center; }
+  .state-badge { font-size: 18px; font-weight: 700; padding: 8px 20px; border-radius: 6px; letter-spacing: 1px; }
+  .state-badge.up { background: var(--green-dim); color: var(--green); border: 1px solid var(--green); }
+  .state-badge.down { background: var(--red-dim); color: var(--red); border: 1px solid var(--red); }
+  .state-badge.chop { background: var(--amber-dim); color: var(--amber); border: 1px solid var(--amber); }
+  .state-badge.unknown { background: var(--surface2); color: var(--text-dim); border: 1px solid var(--border); }
+  .state-meta { font-size: 12px; color: var(--text-dim); line-height: 1.6; }
+  .state-meta .val { color: var(--text); }
+
+  .pipeline { display: flex; gap: 2px; flex-wrap: wrap; }
+  .gate { flex: 1; min-width: 80px; padding: 10px 8px; text-align: center; font-size: 10px; border-radius: 4px; }
+  .gate.pass { background: var(--green-dim); color: var(--green); border: 1px solid #166534; }
+  .gate.fail { background: var(--red-dim); color: var(--red); border: 1px solid #7f1d1d; }
+  .gate.skip { background: var(--surface2); color: var(--text-dim); border: 1px solid var(--border); }
+  .gate .gate-num { font-weight: 700; font-size: 14px; display: block; }
+  .gate .gate-name { display: block; margin-top: 4px; line-height: 1.3; }
+  .pipeline-arrow { display: flex; align-items: center; color: var(--text-dim); font-size: 14px; padding: 0 2px; }
+
+  .score-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 8px; }
+  .score-dim { text-align: center; padding: 12px 4px; background: var(--surface2); border-radius: 6px; border: 1px solid var(--border); }
+  .score-dim .dim-label { font-size: 9px; text-transform: uppercase; color: var(--text-dim); letter-spacing: 0.5px; }
+  .score-dim .dim-value { font-size: 22px; font-weight: 700; margin: 6px 0; }
+  .score-dim .dim-max { font-size: 10px; color: var(--text-dim); }
+  .score-bar { height: 3px; background: var(--border); border-radius: 2px; margin-top: 8px; overflow: hidden; }
+  .score-bar-fill { height: 100%; border-radius: 2px; }
+  .total-score { display: flex; align-items: center; gap: 16px; margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--border); }
+  .total-score .big-num { font-size: 48px; font-weight: 700; }
+  .band-A { background: var(--green-dim); color: var(--green); padding: 4px 12px; border-radius: 4px; font-weight: 700; font-size: 14px; }
+  .band-B { background: var(--blue-dim); color: var(--blue); padding: 4px 12px; border-radius: 4px; font-weight: 700; font-size: 14px; }
+  .band-C { background: var(--amber-dim); color: var(--amber); padding: 4px 12px; border-radius: 4px; font-weight: 700; font-size: 14px; }
+  .band-junk { background: var(--red-dim); color: var(--red); padding: 4px 12px; border-radius: 4px; font-weight: 700; font-size: 14px; }
+
+  .data-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  .data-table th { text-align: left; padding: 8px 12px; font-size: 10px; text-transform: uppercase; letter-spacing: 1px; color: var(--text-dim); border-bottom: 1px solid var(--border); }
+  .data-table td { padding: 10px 12px; border-bottom: 1px solid var(--border); }
+  .data-table tr:hover { background: var(--surface2); }
+
+  .tag { display: inline-block; padding: 2px 6px; border-radius: 3px; font-size: 10px; font-weight: 600; }
+  .tag-bullish { background: var(--green-dim); color: var(--green); }
+  .tag-bearish { background: var(--red-dim); color: var(--red); }
+
+  .grade { display: inline-block; width: 24px; height: 24px; line-height: 24px; text-align: center; border-radius: 4px; font-size: 11px; font-weight: 700; }
+  .grade-A { background: var(--green-dim); color: var(--green); }
+  .grade-B { background: var(--blue-dim); color: var(--blue); }
+  .grade-C { background: var(--amber-dim); color: var(--amber); }
+  .grade-D, .grade-F { background: var(--red-dim); color: var(--red); }
+
+  .exposure-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .bucket { padding: 10px 12px; background: var(--surface2); border-radius: 6px; border: 1px solid var(--border); font-size: 11px; }
+  .bucket .bucket-label { color: var(--text-dim); font-size: 9px; text-transform: uppercase; letter-spacing: 1px; }
+  .bucket .bucket-status { margin-top: 4px; font-weight: 600; }
+  .bucket.occupied { border-color: var(--amber); }
+  .bucket.empty { opacity: 0.5; }
+
+  .action-badge { font-size: 10px; padding: 2px 8px; border-radius: 3px; font-weight: 600; text-transform: uppercase; }
+  .action-execute { background: var(--green-dim); color: var(--green); }
+  .action-alert { background: var(--blue-dim); color: var(--blue); }
+  .action-log { background: var(--surface2); color: var(--text-dim); }
+  .action-reject { background: var(--red-dim); color: var(--red); }
+
+  .empty-state { text-align: center; padding: 48px 24px; color: var(--text-dim); }
+  .empty-state .empty-msg { font-size: 13px; line-height: 1.6; }
+
+  .error-banner { background: var(--red-dim); border: 1px solid var(--red); padding: 12px 16px; border-radius: 6px; color: var(--red); font-size: 12px; display: none; }
+</style>
+</head>
+<body>
+
+<div class="app">
+  <div class="header">
+    <h1>TTRADE <span style="color: var(--text-dim); font-weight: 400">v1.1</span></h1>
+    <div class="status">
+      <span id="connDot" class="dot-live"></span>
+      <span id="connLabel">CONNECTED</span>
+      <span id="clock"></span>
+      <span>Mode: <span style="color: var(--amber)">PAPER</span></span>
+    </div>
+  </div>
+
+  <div class="sidebar">
+    <div class="section">
+      <h3>Connection</h3>
+      <div class="stat"><span class="label">Worker</span><span class="val" id="workerStatus">...</span></div>
+      <div class="stat"><span class="label">Last Fetch</span><span class="val" id="lastFetch">--</span></div>
+      <div class="stat"><span class="label">Signals</span><span class="val" id="totalSignals">0</span></div>
+      <div class="stat"><span class="label">Positions</span><span class="val" id="openPosCount">0</span></div>
+      <div class="stat"><span class="label">Reviews</span><span class="val" id="totalReviews">0</span></div>
+      <div class="refresh-info">Auto-refresh: <span class="countdown" id="refreshCountdown">30s</span></div>
+    </div>
+
+    <div class="section">
+      <h3>Market Summary</h3>
+      <div class="stat"><span class="label">Regime</span><span class="val" id="sidebarRegime">--</span></div>
+      <div class="stat"><span class="label">Last Signal</span><span class="val" id="sidebarLastSignal">--</span></div>
+      <div class="stat"><span class="label">Pass Rate</span><span class="val" id="sidebarPassRate">--</span></div>
+    </div>
+
+    <div class="section">
+      <h3>P&amp;L Summary</h3>
+      <div class="stat"><span class="label">Open P&amp;L</span><span class="val" id="sidebarOpenPnl">$0</span></div>
+      <div class="stat"><span class="label">Closed P&amp;L</span><span class="val" id="sidebarClosedPnl">$0</span></div>
+      <div class="stat"><span class="label">Win Rate</span><span class="val" id="sidebarWinRate">--</span></div>
+    </div>
+
+    <div class="section">
+      <h3>Quick Actions</h3>
+      <button onclick="fetchData()" style="width:100%;padding:8px;background:var(--blue);color:white;border:none;border-radius:4px;font-family:inherit;font-size:11px;cursor:pointer;">Refresh Now</button>
+    </div>
+  </div>
+
+  <div class="main" id="mainContent">
+    <div class="error-banner" id="errorBanner"></div>
+  </div>
+</div>
+
+<script>
+  var WORKER_URL = 'https://ttrade-worker.aicoderally.workers.dev';
+  var REFRESH_SEC = 30;
+  var countdown = REFRESH_SEC;
+  var dash = null;
+  var journal = null;
+
+  var GATES = [
+    'Market Regime', 'Ticker Align', 'Pullback Setup', 'Confirm Bar',
+    'Earnings Gate', 'Price Stability', 'Options IV', 'Liquidity Check',
+    'Position Build', 'Cooldown/Exp'
+  ];
+
+  function fetchData() {
+    Promise.all([
+      fetch(WORKER_URL + '/dashboard').then(function(r) { return r.json(); }),
+      fetch(WORKER_URL + '/journal').then(function(r) { return r.json(); })
+    ]).then(function(res) {
+      dash = res[0];
+      journal = res[1];
+      document.getElementById('connDot').className = 'dot-live';
+      document.getElementById('connDot').textContent = '\u25CF ';
+      document.getElementById('connLabel').textContent = 'CONNECTED';
+      document.getElementById('workerStatus').textContent = 'Online';
+      document.getElementById('workerStatus').style.color = 'var(--green)';
+      document.getElementById('lastFetch').textContent = new Date().toLocaleTimeString('en-US', { hour12: false, timeZone: 'America/New_York' });
+      document.getElementById('errorBanner').style.display = 'none';
+      countdown = REFRESH_SEC;
+      updateSidebar();
+      renderAll();
+    }).catch(function(err) {
+      document.getElementById('connDot').className = 'dot-off';
+      document.getElementById('connDot').textContent = '\u25CF ';
+      document.getElementById('connLabel').textContent = 'OFFLINE';
+      document.getElementById('workerStatus').textContent = 'Error';
+      document.getElementById('workerStatus').style.color = 'var(--red)';
+      document.getElementById('errorBanner').textContent = 'Failed to fetch: ' + err.message;
+      document.getElementById('errorBanner').style.display = 'block';
+    });
+  }
+
+  function updateSidebar() {
+    if (!dash) return;
+    var sigs = dash.recentSignals || [];
+    var pos = dash.openPositions || [];
+    var revs = dash.recentReviews || [];
+    document.getElementById('totalSignals').textContent = String(sigs.length);
+    document.getElementById('openPosCount').textContent = String(pos.length);
+    document.getElementById('totalReviews').textContent = String(revs.length);
+
+    if (sigs.length > 0) {
+      document.getElementById('sidebarRegime').textContent = sigs[0].marketState || sigs[0].market_state || '--';
+      var ts = sigs[0].timestamp || sigs[0].created_at;
+      document.getElementById('sidebarLastSignal').textContent = ts ? new Date(ts).toLocaleTimeString('en-US', { hour12: false }) : '--';
+      var passed = sigs.filter(function(s) { return s.allGatesPassed || s.all_gates_passed; }).length;
+      document.getElementById('sidebarPassRate').textContent = Math.round((passed / sigs.length) * 100) + '%';
+    }
+
+    var openPnl = 0;
+    pos.forEach(function(p) { openPnl += (p.pnlDollars || p.pnl_dollars || 0); });
+    document.getElementById('sidebarOpenPnl').textContent = '$' + openPnl.toFixed(2);
+    document.getElementById('sidebarOpenPnl').style.color = openPnl >= 0 ? 'var(--green)' : 'var(--red)';
+
+    var closedPnl = 0, wins = 0;
+    revs.forEach(function(r) {
+      var pnl = r.pnlDollars || r.pnl_dollars || 0;
+      closedPnl += pnl;
+      if (pnl > 0) wins++;
+    });
+    document.getElementById('sidebarClosedPnl').textContent = '$' + closedPnl.toFixed(2);
+    document.getElementById('sidebarClosedPnl').style.color = closedPnl >= 0 ? 'var(--green)' : 'var(--red)';
+    document.getElementById('sidebarWinRate').textContent = revs.length > 0 ? Math.round((wins / revs.length) * 100) + '%' : '--';
+  }
+
+  function h(tag, attrs, kids) {
+    var e = document.createElement(tag);
+    if (attrs) Object.keys(attrs).forEach(function(k) {
+      if (k === 'textContent') e.textContent = attrs[k];
+      else if (k === 'className') e.className = attrs[k];
+      else e.setAttribute(k, attrs[k]);
+    });
+    if (kids) kids.forEach(function(c) {
+      if (typeof c === 'string') e.appendChild(document.createTextNode(c));
+      else if (c) e.appendChild(c);
+    });
+    return e;
+  }
+
+  function renderAll() {
+    var main = document.getElementById('mainContent');
+    var eb = document.getElementById('errorBanner');
+    while (main.firstChild) main.removeChild(main.firstChild);
+    main.appendChild(eb);
+
+    if (!dash) {
+      main.appendChild(h('div', { className: 'card' }, [
+        h('div', { className: 'card-body empty-state' }, [
+          h('div', { className: 'empty-msg', textContent: 'Connecting to TTrade Worker...' })
+        ])
+      ]));
+      return;
+    }
+
+    var sigs = dash.recentSignals || [];
+    var pos = dash.openPositions || [];
+    var revs = dash.recentReviews || [];
+
+    // Market State
+    var regime = sigs.length > 0 ? (sigs[0].marketState || sigs[0].market_state || 'UNKNOWN') : '--';
+    var sc = regime === 'TREND_UP' ? 'up' : regime === 'TREND_DOWN' ? 'down' : regime === 'CHOP' ? 'chop' : 'unknown';
+    var dirText = regime === 'TREND_UP' ? 'Bullish spreads enabled' : regime === 'TREND_DOWN' ? 'Bearish spreads enabled' : regime === 'CHOP' ? 'NO TRADES - all signals blocked' : 'Waiting for data';
+    var dirCol = regime === 'TREND_UP' ? 'var(--green)' : regime === 'TREND_DOWN' ? 'var(--red)' : 'var(--amber)';
+    var scanText = sigs.length > 0 ? 'Last scan: ' + new Date(sigs[0].timestamp || sigs[0].created_at).toLocaleString() : 'No scans yet';
+
+    main.appendChild(h('div', { className: 'card' }, [
+      h('div', { className: 'card-header' }, [h('span', {}, ['Market State Machine']), h('span', { textContent: scanText })]),
+      h('div', { className: 'card-body' }, [
+        h('div', { className: 'state-display' }, [
+          h('div', { className: 'state-badge ' + sc, textContent: regime }),
+          h('div', { className: 'state-meta' }, [
+            h('div', {}, ['Direction: ', h('span', { className: 'val', style: 'color:' + dirCol, textContent: dirText })]),
+            h('div', {}, ['Signals: ', h('span', { className: 'val', textContent: String(sigs.length) }), '  |  Positions: ', h('span', { className: 'val', textContent: pos.length + '/2 max' })])
+          ])
+        ])
+      ])
+    ]));
+
+    // Pipeline (latest signal)
+    if (sigs.length > 0) {
+      var latest = sigs[0];
+      var allP = latest.allGatesPassed || latest.all_gates_passed;
+      var isChop = (latest.marketState || latest.market_state) === 'CHOP';
+      var pd = h('div', { className: 'pipeline' });
+      GATES.forEach(function(name, i) {
+        var cls = allP ? 'pass' : (i === 0 && isChop) ? 'fail' : (i === 0) ? 'pass' : 'skip';
+        pd.appendChild(h('div', { className: 'gate ' + cls }, [
+          h('span', { className: 'gate-num', textContent: String(i + 1) }),
+          h('span', { className: 'gate-name', textContent: name })
+        ]));
+        if (i < 9) pd.appendChild(h('div', { className: 'pipeline-arrow', textContent: '\u2192' }));
+      });
+      var rText = allP ? '10/10 PASS' : 'BLOCKED';
+      var rCol = allP ? 'var(--green)' : 'var(--red)';
+      main.appendChild(h('div', { className: 'card' }, [
+        h('div', { className: 'card-header' }, [h('span', {}, ['Signal Pipeline \u2014 ' + latest.ticker]), h('span', { style: 'color:' + rCol, textContent: rText })]),
+        h('div', { className: 'card-body' }, [pd])
+      ]));
+    }
+
+    // Scoring (first signal with score > 0)
+    var scored = sigs.find(function(s) { var sc = s.signalScore || s.signal_score; return sc && sc > 0; });
+    if (scored) {
+      var raw = scored.componentScoresJson || scored.component_scores_json;
+      var scores;
+      try { scores = typeof raw === 'string' ? JSON.parse(raw) : raw; } catch(e) { scores = null; }
+      if (scores) {
+        var dims = [
+          { key: 'regime', label: 'Regime', max: 20 }, { key: 'alignment', label: 'Align', max: 15 },
+          { key: 'pullback', label: 'Pullback', max: 15 }, { key: 'confirmation', label: 'Confirm', max: 20 },
+          { key: 'stability', label: 'Stable', max: 10 }, { key: 'structure', label: 'Struct', max: 10 },
+          { key: 'event', label: 'Event', max: 10 }
+        ];
+        var sg = h('div', { className: 'score-grid' });
+        dims.forEach(function(d) {
+          var v = Math.round((scores[d.key] || 0) * 10) / 10;
+          var pct = (v / d.max) * 100;
+          var col = pct >= 80 ? 'var(--green)' : pct >= 60 ? 'var(--blue)' : pct >= 40 ? 'var(--amber)' : 'var(--red)';
+          sg.appendChild(h('div', { className: 'score-dim' }, [
+            h('div', { className: 'dim-label', textContent: d.label }),
+            h('div', { className: 'dim-value', style: 'color:' + col, textContent: String(v) }),
+            h('div', { className: 'dim-max', textContent: '/ ' + d.max }),
+            h('div', { className: 'score-bar' }, [h('div', { className: 'score-bar-fill', style: 'width:' + pct + '%;background:' + col })])
+          ]));
+        });
+        var tot = Math.round(scores.total || scored.signalScore || scored.signal_score || 0);
+        var bc = tot >= 85 ? 'band-A' : tot >= 70 ? 'band-B' : tot >= 55 ? 'band-C' : 'band-junk';
+        var bt = tot >= 85 ? 'A \u2014 EXECUTE' : tot >= 70 ? 'B \u2014 ALERT' : tot >= 55 ? 'C \u2014 LOG' : 'JUNK';
+        var nc = tot >= 85 ? 'var(--green)' : tot >= 70 ? 'var(--blue)' : tot >= 55 ? 'var(--amber)' : 'var(--red)';
+        main.appendChild(h('div', { className: 'card' }, [
+          h('div', { className: 'card-header' }, [h('span', {}, ['Scoring Engine']), h('span', { textContent: scored.ticker + ' ' + (scored.direction || '') })]),
+          h('div', { className: 'card-body' }, [sg, h('div', { className: 'total-score' }, [
+            h('div', { className: 'big-num', style: 'color:' + nc, textContent: String(tot) }),
+            h('div', {}, [h('div', { className: bc, textContent: bt })])
+          ])])
+        ]));
+      }
+    }
+
+    // Positions
+    var pth = h('thead', {}, [h('tr', {}, ['Ticker','Dir','Entry','P&L %','P&L $','Status','Opened'].map(function(x) { return h('th', { textContent: x }); }))]);
+    var ptb = h('tbody');
+    if (pos.length === 0) {
+      var td = h('td', { textContent: 'No open positions', style: 'text-align:center;color:var(--text-dim);padding:24px' });
+      td.setAttribute('colspan', '7');
+      ptb.appendChild(h('tr', {}, [td]));
+    } else {
+      pos.forEach(function(p) {
+        var pp = p.pnlPct || p.pnl_pct || 0;
+        var pd = p.pnlDollars || p.pnl_dollars || 0;
+        var pc = pp >= 0 ? 'var(--green)' : 'var(--red)';
+        var dir = p.direction || '';
+        ptb.appendChild(h('tr', {}, [
+          h('td', { style: 'font-weight:700', textContent: p.ticker }),
+          h('td', {}, [h('span', { className: 'tag tag-' + dir, textContent: dir.toUpperCase() })]),
+          h('td', { textContent: '$' + (p.entryDebit || p.entry_debit || 0).toFixed(2) }),
+          h('td', { style: 'color:' + pc + ';font-weight:600', textContent: (pp * 100).toFixed(1) + '%' }),
+          h('td', { style: 'color:' + pc, textContent: '$' + pd.toFixed(2) }),
+          h('td', { textContent: p.status }),
+          h('td', { style: 'font-size:10px;color:var(--text-dim)', textContent: p.openedAt || p.opened_at || '' })
+        ]));
+      });
+    }
+    main.appendChild(h('div', { className: 'card' }, [
+      h('div', { className: 'card-header' }, [h('span', {}, ['Open Positions']), h('span', { textContent: pos.length + ' of 2 max' })]),
+      h('div', { className: 'card-body', style: 'padding:0' }, [h('table', { className: 'data-table' }, [pth, ptb])])
+    ]));
+
+    // Exposure Map
+    var bk = { market_long: null, market_short: null, tech_long: null, tech_short: null };
+    pos.forEach(function(p) {
+      var t = p.ticker, d = p.direction;
+      if (['SPY','QQQ'].indexOf(t) >= 0) { if (d === 'bullish') bk.market_long = t; else bk.market_short = t; }
+      else if (['AAPL','MSFT','NVDA'].indexOf(t) >= 0) { if (d === 'bullish') bk.tech_long = t; else bk.tech_short = t; }
+    });
+    var eg = h('div', { className: 'exposure-grid' });
+    [{k:'market_long',l:'Market Long \u2191'},{k:'market_short',l:'Market Short \u2193'},{k:'tech_long',l:'Tech Long \u2191'},{k:'tech_short',l:'Tech Short \u2193'}].forEach(function(b) {
+      var v = bk[b.k];
+      eg.appendChild(h('div', { className: 'bucket ' + (v ? 'occupied' : 'empty') }, [
+        h('div', { className: 'bucket-label', textContent: b.l }),
+        h('div', { className: 'bucket-status', style: v ? 'color:var(--amber)' : 'color:var(--text-dim)', textContent: v || 'Empty' })
+      ]));
+    });
+    main.appendChild(h('div', { className: 'card' }, [
+      h('div', { className: 'card-header', textContent: 'Exposure Map' }),
+      h('div', { className: 'card-body' }, [eg])
+    ]));
+
+    // Signal History
+    if (sigs.length > 0) {
+      var sth = h('thead', {}, [h('tr', {}, ['Time','Ticker','Dir','State','Gates','Score','Action'].map(function(x) { return h('th', { textContent: x }); }))]);
+      var stb = h('tbody');
+      sigs.forEach(function(s) {
+        var act = s.actionTaken || s.action_taken || 'reject';
+        var ap = s.allGatesPassed || s.all_gates_passed;
+        var sc = s.signalScore || s.signal_score;
+        var dir = s.direction || '';
+        var ts = s.timestamp || s.created_at || '';
+        var tStr = ts ? new Date(ts).toLocaleString('en-US', { timeZone: 'America/New_York', hour12: false, month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) : '';
+        stb.appendChild(h('tr', {}, [
+          h('td', { style: 'font-size:10px;color:var(--text-dim)', textContent: tStr }),
+          h('td', { style: 'font-weight:600', textContent: s.ticker }),
+          h('td', {}, [h('span', { className: 'tag tag-' + dir, textContent: dir.toUpperCase() })]),
+          h('td', { textContent: s.marketState || s.market_state || '' }),
+          h('td', { textContent: ap ? '10/10' : 'BLOCKED' }),
+          h('td', { textContent: sc ? String(Math.round(sc)) : '--' }),
+          h('td', {}, [h('span', { className: 'action-badge action-' + act, textContent: act })])
+        ]));
+      });
+      main.appendChild(h('div', { className: 'card' }, [
+        h('div', { className: 'card-header' }, [h('span', {}, ['Signal History']), h('span', { textContent: 'Last ' + sigs.length })]),
+        h('div', { className: 'card-body', style: 'padding:0' }, [h('table', { className: 'data-table' }, [sth, stb])])
+      ]));
+    }
+
+    // Trade Journal
+    if (revs.length === 0) {
+      main.appendChild(h('div', { className: 'card' }, [
+        h('div', { className: 'card-header', textContent: 'Trade Journal' }),
+        h('div', { className: 'card-body empty-state' }, [h('div', { className: 'empty-msg', textContent: 'No completed trades yet. Reviews appear after positions close.' })])
+      ]));
+    } else {
+      var jth = h('thead', {}, [h('tr', {}, ['Ticker','Dir','Score','Entry','Exit','P&L','Setup','Exec','Out','Reason'].map(function(x) { return h('th', { textContent: x }); }))]);
+      var jtb = h('tbody');
+      var tw = 0, tp = 0;
+      revs.forEach(function(r) {
+        var pd = r.pnlDollars || r.pnl_dollars || 0;
+        if (pd > 0) tw++;
+        tp += pd;
+        var pc = pd >= 0 ? 'var(--green)' : 'var(--red)';
+        var dir = r.direction || '';
+        var sg = r.setupGrade || r.setup_grade || '-';
+        var xg = r.executionGrade || r.execution_grade || '-';
+        var og = r.outcomeGrade || r.outcome_grade || '-';
+        jtb.appendChild(h('tr', {}, [
+          h('td', { style: 'font-weight:600', textContent: r.ticker }),
+          h('td', {}, [h('span', { className: 'tag tag-' + dir, textContent: dir.toUpperCase() })]),
+          h('td', { textContent: String(Math.round(r.signalScore || r.signal_score || 0)) }),
+          h('td', { textContent: '$' + (r.entryDebit || r.entry_debit || 0).toFixed(2) }),
+          h('td', { textContent: '$' + (r.exitCredit || r.exit_credit || 0).toFixed(2) }),
+          h('td', { style: 'color:' + pc + ';font-weight:600', textContent: (pd >= 0 ? '+' : '') + '$' + pd.toFixed(2) }),
+          h('td', {}, [h('span', { className: 'grade grade-' + sg, textContent: sg })]),
+          h('td', {}, [h('span', { className: 'grade grade-' + xg, textContent: xg })]),
+          h('td', {}, [h('span', { className: 'grade grade-' + og, textContent: og })]),
+          h('td', { style: 'font-size:10px;color:var(--text-dim)', textContent: r.exitReason || r.exit_reason || '' })
+        ]));
+      });
+      var wr = revs.length > 0 ? Math.round((tw / revs.length) * 100) : 0;
+      main.appendChild(h('div', { className: 'card' }, [
+        h('div', { className: 'card-header' }, [h('span', {}, ['Trade Journal']), h('span', { textContent: revs.length + ' trades | ' + wr + '% WR | ' + (tp >= 0 ? '+' : '') + '$' + tp.toFixed(2) })]),
+        h('div', { className: 'card-body', style: 'padding:0' }, [h('table', { className: 'data-table' }, [jth, jtb])])
+      ]));
+    }
+  }
+
+  function tick() {
+    document.getElementById('clock').textContent = new Date().toLocaleTimeString('en-US', { hour12: false, timeZone: 'America/New_York' }) + ' ET';
+    countdown--;
+    if (countdown <= 0) fetchData();
+    document.getElementById('refreshCountdown').textContent = countdown + 's';
+  }
+
+  fetchData();
+  setInterval(tick, 1000);
+</script>
+
+</body>
+</html>
