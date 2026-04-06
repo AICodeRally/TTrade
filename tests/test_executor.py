@@ -27,3 +27,12 @@ def test_submit_order_preflight_fails():
     with pytest.raises(ValueError, match="Preflight failed"):
         submit_order(broker=mock_broker, legs=[{"side": "BUY"}, {"side": "SELL"}], limit_price=0.70)
     mock_broker.place_multileg_order.assert_not_called()
+
+
+def test_submit_order_paper_mode_skips_real_order():
+    mock_broker = MagicMock()
+    result = submit_order(broker=mock_broker, legs=[{"side": "BUY"}, {"side": "SELL"}], limit_price=0.70, mode="PAPER")
+    mock_broker.preflight_multileg.assert_not_called()
+    mock_broker.place_multileg_order.assert_not_called()
+    assert result["status"] == "PAPER_SIMULATED"
+    assert result["orderId"].startswith("PAPER-")

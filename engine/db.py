@@ -106,7 +106,7 @@ class ConfigRecord(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     config_hash: str = Field(index=True, unique=True)
     config_json: str
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(__import__("datetime").timezone.utc))
 
 
 def init_db(db_path: str = "data/ttrade.db"):

@@ -8,6 +8,7 @@ exports/
 *.db
 *.db-shm
 *.db-wal
+*.egg-info/
 .ruff_cache/
 .pytest_cache/
 dist/

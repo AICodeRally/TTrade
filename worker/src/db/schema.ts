@@ -4,6 +4,7 @@ import {
   sqliteTable,
   text,
 } from "drizzle-orm/sqlite-core";
+import { sql } from "drizzle-orm";
 
 export const signalEvaluations = sqliteTable("signal_evaluations", {
   id: integer("id").primaryKey({ autoIncrement: true }),
@@ -18,7 +19,7 @@ export const signalEvaluations = sqliteTable("signal_evaluations", {
   actionTaken: text("action_taken"),
   strategyVersion: text("strategy_version"),
   configHash: text("config_hash"),
-  createdAt: text("created_at").notNull().default("CURRENT_TIMESTAMP"),
+  createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
 });
 
 export const gateResults = sqliteTable("gate_results", {
@@ -26,10 +27,10 @@ export const gateResults = sqliteTable("gate_results", {
   signalId: text("signal_id").notNull(),
   gateName: text("gate_name").notNull(),
   passed: integer("passed", { mode: "boolean" }).notNull(),
-  measuredValue: real("measured_value"),
-  threshold: real("threshold"),
+  measuredValue: text("measured_value"),
+  threshold: text("threshold"),
   configVersion: text("config_version"),
-  createdAt: text("created_at").notNull().default("CURRENT_TIMESTAMP"),
+  createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
 });
 
 export const executionEvents = sqliteTable("execution_events", {
@@ -43,7 +44,7 @@ export const executionEvents = sqliteTable("execution_events", {
   limitPrice: real("limit_price"),
   fillPrice: real("fill_price"),
   timestamp: text("timestamp").notNull(),
-  createdAt: text("created_at").notNull().default("CURRENT_TIMESTAMP"),
+  createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
 });
 
 export const positions = sqliteTable("positions", {
@@ -64,7 +65,7 @@ export const positions = sqliteTable("positions", {
   pnlDollars: real("pnl_dollars"),
   mfe: real("mfe"),
   mae: real("mae"),
-  createdAt: text("created_at").notNull().default("CURRENT_TIMESTAMP"),
+  createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
 });
 
 export const tradeReviews = sqliteTable("trade_reviews", {
@@ -89,7 +90,7 @@ export const tradeReviews = sqliteTable("trade_reviews", {
   reviewNotes: text("review_notes"),
   strategyVersion: text("strategy_version"),
   configHash: text("config_hash"),
-  createdAt: text("created_at").notNull().default("CURRENT_TIMESTAMP"),
+  createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
 });
 
 export const weeklyReports = sqliteTable("weekly_reports", {
@@ -103,14 +104,14 @@ export const weeklyReports = sqliteTable("weekly_reports", {
   totalPnl: real("total_pnl"),
   reportJson: text("report_json"),
   generatedAt: text("generated_at").notNull(),
-  createdAt: text("created_at").notNull().default("CURRENT_TIMESTAMP"),
+  createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
 });
 
 export const configVersions = sqliteTable("config_versions", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   configHash: text("config_hash").notNull().unique(),
   configJson: text("config_json").notNull(),
-  createdAt: text("created_at").notNull().default("CURRENT_TIMESTAMP"),
+  createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
 });
 
 export const syncLog = sqliteTable("sync_log", {
@@ -119,5 +120,5 @@ export const syncLog = sqliteTable("sync_log", {
   recordType: text("record_type").notNull(),
   recordCount: integer("record_count").notNull(),
   status: text("status").notNull(),
-  createdAt: text("created_at").notNull().default("CURRENT_TIMESTAMP"),
+  createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
 });

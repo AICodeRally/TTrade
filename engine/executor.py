@@ -1,6 +1,7 @@
 """Order placement — preflight, submit, poll for fill."""
 import logging
 import time
+import uuid
 from engine.broker import BrokerClient
 
 logger = logging.getLogger(__name__)
@@ -15,7 +16,11 @@ def prepare_order_legs(buy_symbol: str, sell_symbol: str, open_close: str = "OPE
     ]
 
 
-def submit_order(broker: BrokerClient, legs: list[dict], limit_price: float) -> dict:
+def submit_order(broker: BrokerClient, legs: list[dict], limit_price: float, mode: str = "MANUAL_APPROVAL") -> dict:
+    if mode == "PAPER":
+        paper_id = f"PAPER-{uuid.uuid4().hex[:8]}"
+        logger.info("PAPER mode — simulating order %s at $%.2f", paper_id, limit_price)
+        return {"orderId": paper_id, "status": "PAPER_SIMULATED", "limitPrice": limit_price}
     preflight = broker.preflight_multileg(legs, limit_price)
     if not preflight.get("valid", False):
         raise ValueError(f"Preflight failed: {preflight.get('reason', 'unknown')}")
