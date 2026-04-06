@@ -92,3 +92,61 @@ def test_pullback_quality(pullback_bars, config):
 def test_confirmation_bullish(pullback_bars, config):
     result = check_confirmation(pullback_bars, "bullish", config)
     assert result.gate_name == "confirmation"
+
+
+from engine.gates.earnings import check_earnings
+from engine.gates.price_stability import check_price_stability
+from engine.gates.options_volatility import check_options_volatility
+
+
+def test_earnings_clear(config):
+    result = check_earnings("AAPL", days_to_earnings=30, config=config)
+    assert result.passed is True
+    assert result.gate_name == "earnings_event"
+
+
+def test_earnings_blackout(config):
+    result = check_earnings("AAPL", days_to_earnings=3, config=config)
+    assert result.passed is False
+
+
+def test_earnings_unknown_passes(config):
+    result = check_earnings("AAPL", days_to_earnings=None, config=config)
+    assert result.passed is True
+
+
+def test_price_stability_normal(uptrend_ticker_bars, config):
+    result = check_price_stability(uptrend_ticker_bars, config)
+    assert result.gate_name == "price_stability"
+    assert result.passed is True
+
+
+def test_price_stability_spike(config):
+    dates = pd.bdate_range(end=date(2026, 4, 3), periods=30)
+    closes = [140 + i * 0.5 for i in range(25)]
+    closes += [160, 145, 165, 140, 170]
+    bars = pd.DataFrame({
+        "Open": closes,
+        "High": [c + 0.5 for c in closes[:25]] + [c + 15 for c in closes[25:]],
+        "Low": [c - 0.5 for c in closes[:25]] + [c - 15 for c in closes[25:]],
+        "Close": closes,
+        "Volume": [30_000_000] * 30,
+    }, index=dates)
+    result = check_price_stability(bars, config)
+    assert result.passed is False
+
+
+def test_iv_rank_low_passes(config):
+    result = check_options_volatility(iv_rank=30.0, config=config)
+    assert result.passed is True
+    assert result.gate_name == "options_volatility"
+
+
+def test_iv_rank_medium_reduces(config):
+    result = check_options_volatility(iv_rank=60.0, config=config)
+    assert result.passed is True
+
+
+def test_iv_rank_high_fails(config):
+    result = check_options_volatility(iv_rank=80.0, config=config)
+    assert result.passed is False
