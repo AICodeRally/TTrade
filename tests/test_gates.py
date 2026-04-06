@@ -150,3 +150,91 @@ def test_iv_rank_medium_reduces(config):
 def test_iv_rank_high_fails(config):
     result = check_options_volatility(iv_rank=80.0, config=config)
     assert result.passed is False
+
+
+from engine.gates.liquidity import check_liquidity
+from engine.gates.position_construction import check_position_construction
+from engine.gates.cooldown_exposure import check_cooldown_exposure
+from datetime import datetime, timedelta
+
+
+def test_liquidity_good(config):
+    option_data = {"open_interest": 500, "bid": 5.10, "ask": 5.25}
+    result = check_liquidity(option_data, config)
+    assert result.passed is True
+    assert result.gate_name == "liquidity"
+
+
+def test_liquidity_wide_spread(config):
+    option_data = {"open_interest": 500, "bid": 5.00, "ask": 5.50}
+    result = check_liquidity(option_data, config)
+    assert result.passed is False
+
+
+def test_liquidity_low_oi(config):
+    option_data = {"open_interest": 20, "bid": 5.10, "ask": 5.15}
+    result = check_liquidity(option_data, config)
+    assert result.passed is False
+
+
+def test_position_construction_valid(config):
+    spread_params = {"net_debit": 72.0, "max_loss": 72.0, "max_gain": 428.0, "spread_width": 5.0}
+    result = check_position_construction(spread_params, config)
+    assert result.passed is True
+    assert result.gate_name == "position_construction"
+
+
+def test_position_construction_debit_too_high(config):
+    spread_params = {"net_debit": 150.0, "max_loss": 150.0, "max_gain": 350.0, "spread_width": 5.0}
+    result = check_position_construction(spread_params, config)
+    assert result.passed is False
+
+
+def test_position_construction_bad_rr(config):
+    spread_params = {"net_debit": 80.0, "max_loss": 80.0, "max_gain": 80.0, "spread_width": 5.0}
+    result = check_position_construction(spread_params, config)
+    assert result.passed is False
+
+
+def test_cooldown_no_recent_fills(config):
+    result = check_cooldown_exposure(
+        last_fill_time=None, fills_today=0, open_positions=[],
+        new_ticker="AAPL", new_direction="bullish", config=config,
+    )
+    assert result.passed is True
+    assert result.gate_name == "cooldown_exposure"
+
+
+def test_cooldown_too_recent(config):
+    recent = datetime.now() - timedelta(hours=2)
+    result = check_cooldown_exposure(
+        last_fill_time=recent, fills_today=0, open_positions=[],
+        new_ticker="AAPL", new_direction="bullish", config=config,
+    )
+    assert result.passed is False
+
+
+def test_cooldown_max_daily_trades(config):
+    result = check_cooldown_exposure(
+        last_fill_time=None, fills_today=1, open_positions=[],
+        new_ticker="AAPL", new_direction="bullish", config=config,
+    )
+    assert result.passed is False
+
+
+def test_exposure_bucket_conflict(config):
+    open_positions = [{"ticker": "MSFT", "direction": "bullish"}]
+    result = check_cooldown_exposure(
+        last_fill_time=None, fills_today=0, open_positions=open_positions,
+        new_ticker="AAPL", new_direction="bullish", config=config,
+    )
+    assert result.passed is False
+
+
+def test_exposure_different_bucket_ok(config):
+    open_positions = [{"ticker": "SPY", "direction": "bullish"}]
+    result = check_cooldown_exposure(
+        last_fill_time=None, fills_today=0, open_positions=open_positions,
+        new_ticker="AAPL", new_direction="bullish", config=config,
+    )
+    assert result.passed is True
