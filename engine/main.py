@@ -67,12 +67,11 @@ def run_scan_cycle(config: TTRadeConfig, session: Session):
     logger.info("Market state: %s (slope=%.2f, SPY=$%.2f)",
                 market_state.state.value, market_state.slope, market_state.current_price)
 
-    if market_state.state == MarketState.CHOP:
-        logger.info("CHOP regime — skipping scan")
-        return
-
     last_fill_time, fills_today = _get_cooldown_state(session)
     open_positions = _get_open_positions_as_dicts(session)
+
+    if market_state.state == MarketState.CHOP:
+        logger.info("CHOP regime — gate 1 will reject, logging for audit trail")
 
     for ticker in config.tickers:
         try:
