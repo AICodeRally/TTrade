@@ -1,0 +1,15 @@
+__pycache__/
+*.pyc
+.venv/
+data/
+logs/
+exports/
+.env
+*.db
+*.db-shm
+*.db-wal
+.ruff_cache/
+.pytest_cache/
+dist/
+node_modules/
+.wrangler/
