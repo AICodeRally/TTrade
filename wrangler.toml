@@ -6,5 +6,5 @@ compatibility_flags = ["nodejs_compat"]
 [[d1_databases]]
 binding = "DB"
 database_name = "ttrade-db"
-database_id = "PLACEHOLDER_CREATE_VIA_WRANGLER"
-migrations_dir = "worker/drizzle"
+database_id = "34853f80-bf36-4156-b15d-b32a0e58b60d"
+migrations_dir = "worker/migrations"
