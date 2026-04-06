@@ -27,6 +27,9 @@ ttrade = "engine.cli:cli"
 testpaths = ["tests"]
 pythonpath = ["."]
 
+[tool.setuptools.packages.find]
+include = ["engine*", "worker*"]
+
 [tool.ruff]
 target-version = "py312"
 line-length = 100
