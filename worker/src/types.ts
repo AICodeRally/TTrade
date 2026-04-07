@@ -5,4 +5,5 @@ export type Env = {
   PUBLIC_API_SECRET: string;
   PUBLIC_ACCOUNT_ID: string;
   DASHBOARD_TOKEN: string;
+  CF_AIG_TOKEN: string;
 };

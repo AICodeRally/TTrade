@@ -3,38 +3,39 @@ import { Env } from "../types";
 
 const app = new Hono<{ Bindings: Env }>();
 
-// ── CF AI Gateway via binding (pre-authenticated, no token needed) ──
+// ── CF AI Gateway via OpenRouter (Claude Haiku routed through OR) ──
+// Direct Anthropic BYOK keys (anthro-01/02/03) are stale.
+// OpenRouter (aicr-or-ai) routes to Claude Haiku via Bedrock — working and cheaper.
 const GATEWAY_ID = "aicr";
-const BYOK_ALIAS = "anthro-01";
-const MODEL = "claude-haiku-4-5-20251001";
+const BYOK_ALIAS = "aicr-or-ai";
+const MODEL = "anthropic/claude-haiku-4-5";
 
 async function callClaude(
   ai: Ai,
+  aigToken: string,
   system: string,
   userPrompt: string,
   maxTokens = 512,
 ): Promise<string> {
   const gateway = ai.gateway(GATEWAY_ID);
-  const resp = await gateway.run(
-    {
-      provider: "anthropic",
-      endpoint: "v1/messages",
-      headers: {
-        "cf-aig-byok-alias": BYOK_ALIAS,
-      },
-      query: {
-        model: MODEL,
-        max_tokens: maxTokens,
-        system,
-        messages: [{ role: "user", content: userPrompt }],
-      },
+  const baseUrl = await gateway.getUrl("openrouter");
+
+  const resp = await fetch(`${baseUrl}/v1/chat/completions`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      "cf-aig-authorization": `Bearer ${aigToken}`,
+      "cf-aig-byok-alias": BYOK_ALIAS,
     },
-    {
-      extraHeaders: {
-        "anthropic-version": "2023-06-01",
-      },
-    },
-  );
+    body: JSON.stringify({
+      model: MODEL,
+      max_tokens: maxTokens,
+      messages: [
+        { role: "system", content: system },
+        { role: "user", content: userPrompt },
+      ],
+    }),
+  });
 
   if (!resp.ok) {
     const errText = await resp.text();
@@ -42,9 +43,9 @@ async function callClaude(
   }
 
   const result = (await resp.json()) as {
-    content: Array<{ type: string; text: string }>;
+    choices: Array<{ message: { content: string } }>;
   };
-  return result.content?.[0]?.text || "";
+  return result.choices?.[0]?.message?.content || "";
 }
 
 interface AnalyzeRequest {
@@ -138,7 +139,7 @@ ${newsContext}
 Provide your conviction analysis as JSON.`;
 
   try {
-    const text = await callClaude(c.env.AI, SYSTEM_PROMPT, userPrompt);
+    const text = await callClaude(c.env.AI, c.env.CF_AIG_TOKEN, SYSTEM_PROMPT, userPrompt);
     const jsonMatch = text.match(/\{[\s\S]*\}/);
     if (!jsonMatch) {
       return c.json({ ok: false, error: "Failed to parse AI response", raw: text }, 500);
@@ -213,7 +214,7 @@ Failure Tags: ${body.failure_tags.length > 0 ? body.failure_tags.join(", ") : "N
 Provide your coaching review as JSON.`;
 
   try {
-    const text = await callClaude(c.env.AI, REVIEW_SYSTEM_PROMPT, userPrompt);
+    const text = await callClaude(c.env.AI, c.env.CF_AIG_TOKEN, REVIEW_SYSTEM_PROMPT, userPrompt);
     const jsonMatch = text.match(/\{[\s\S]*\}/);
     if (!jsonMatch) {
       return c.json({ ok: false, error: "Failed to parse AI review", raw: text }, 500);
