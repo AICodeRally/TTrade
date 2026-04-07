@@ -440,6 +440,76 @@ def tech_analysis(ticker: str):
     click.echo("")
 
 
+@cli.command(name="forecast")
+@click.argument("ticker")
+@click.option("--days", default=5, help="Forecast horizon in days")
+def price_forecast(ticker: str, days: int):
+    """Price forecast using ARIMA + Fourier + ML ensemble."""
+    from engine.forecast import forecast_price
+
+    logging.basicConfig(level=logging.WARNING)
+    click.echo(f"Forecasting {ticker} ({days}-day horizon)")
+    click.echo("=" * 65)
+
+    r = forecast_price(ticker, forecast_days=days)
+
+    # Direction header
+    icons = {"BULLISH": "▲▲▲", "BEARISH": "▼▼▼", "NEUTRAL": "───"}
+    click.echo(f"\n  {icons.get(r.direction, '   ')}  {r.direction} ({r.strength})")
+    click.echo(f"  {r.ticker} @ ${r.current_price:,.2f}  →  ${r.predicted_price_5d:,.2f}  ({r.predicted_change_pct:+.2f}%)")
+    click.echo(f"  Confidence: {r.ensemble_confidence:.0f}%")
+
+    # ARIMA
+    click.echo(f"\n  ── ARIMA {r.arima_order} ──")
+    click.echo(f"  Direction: {r.arima_direction}  ({r.arima_change_pct:+.2f}%)")
+    click.echo(f"  MAPE: {r.arima_mape:.1f}%")
+    prices = "  →  ".join(f"${p:,.2f}" for p in r.arima_forecast_5d)
+    click.echo(f"  Day 1-{days}: {prices}")
+
+    # Fourier
+    click.echo(f"\n  ── Fourier Transform ──")
+    click.echo(f"  Dominant cycle: {r.fourier_dominant_period} days")
+    click.echo(f"  Cycle position: {r.fourier_cycle_position}")
+    click.echo(f"  Direction: {r.fourier_direction}  ({r.fourier_change_pct:+.2f}%)")
+    prices = "  →  ".join(f"${p:,.2f}" for p in r.fourier_forecast_5d)
+    click.echo(f"  Day 1-{days}: {prices}")
+
+    # Ensemble
+    click.echo(f"\n  ── Ensemble (ARIMA 30% + Fourier 30% + ML 40%) ──")
+    click.echo(f"  Direction: {r.ensemble_direction}  ({r.ensemble_change_pct:+.2f}%)")
+    click.echo(f"  MAPE: {r.ensemble_mape:.1f}%")
+    prices = "  →  ".join(f"${p:,.2f}" for p in r.ensemble_forecast_5d)
+    click.echo(f"  Day 1-{days}: {prices}")
+
+    # Forecast table
+    click.echo(f"\n  ── Day-by-Day Forecast ──")
+    click.echo(f"  {'Day':>4s}  {'ARIMA':>10s}  {'Fourier':>10s}  {'Ensemble':>10s}")
+    click.echo(f"  {'─'*42}")
+    for i in range(days):
+        a = r.arima_forecast_5d[i] if i < len(r.arima_forecast_5d) else r.arima_forecast_5d[-1]
+        f = r.fourier_forecast_5d[i] if i < len(r.fourier_forecast_5d) else r.fourier_forecast_5d[-1]
+        e = r.ensemble_forecast_5d[i] if i < len(r.ensemble_forecast_5d) else r.ensemble_forecast_5d[-1]
+        click.echo(f"  {i+1:>4d}  ${a:>9,.2f}  ${f:>9,.2f}  ${e:>9,.2f}")
+
+    # Grid bias
+    click.echo(f"\n  ── Grid Trading Bias ──")
+    click.echo(f"  Bias: {r.grid_bias.upper()}")
+    if r.suggested_grid_shift_pct != 0:
+        click.echo(f"  Shift grid center: {r.suggested_grid_shift_pct:+.1f}%")
+        shifted = r.current_price * (1 + r.suggested_grid_shift_pct / 100)
+        click.echo(f"  Shifted center: ${shifted:,.2f} (from ${r.current_price:,.2f})")
+    else:
+        click.echo(f"  Keep grid centered at current price")
+
+    # Vote summary
+    click.echo(f"\n  ── Model Votes ──")
+    click.echo(f"  ARIMA:    {r.arima_direction:8s}  {r.arima_change_pct:+.2f}%")
+    click.echo(f"  Fourier:  {r.fourier_direction:8s}  {r.fourier_change_pct:+.2f}%")
+    click.echo(f"  Ensemble: {r.ensemble_direction:8s}  {r.ensemble_change_pct:+.2f}%")
+    click.echo(f"  Verdict:  {r.direction} ({r.strength})")
+    click.echo("")
+
+
 @cli.command(name="lev")
 @click.option("--account", default=1000.0, help="Account value for position sizing")
 def leverage_scan(account: float):
