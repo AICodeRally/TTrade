@@ -10,7 +10,11 @@ class TTRadeConfig:
     strategy_version: str = "1.1.0"
 
     # Universe
-    tickers: tuple[str, ...] = ("SPY", "QQQ", "AAPL", "MSFT", "NVDA")
+    tickers: tuple[str, ...] = ("SPY", "QQQ", "AAPL", "MSFT", "NVDA", "VCX", "RKLB")
+
+    # Account
+    account_value: float = 1000.0
+    max_risk_per_trade_pct: float = 0.10  # 10% of account = $100 hard cap
 
     # State machine
     ma_period: int = 20
@@ -58,6 +62,15 @@ class TTRadeConfig:
     max_trades_per_day: int = 1
     cooldown_hours: int = 6
     max_open_positions: int = 2
+
+    # Circuit breakers
+    max_daily_loss: float = 200.0   # $200/day = 20% of account
+    max_weekly_loss: float = 400.0  # $400/week = 40% of account
+    vix_max_entry: float = 30.0     # Block entries above VIX 30
+
+    # Speculative trade rules
+    speculative_tickers: tuple[str, ...] = ("NVDA", "RKLB")
+    max_speculative_positions: int = 1  # Never overlap 2 speculative trades
 
     # Scoring
     min_score_execute: float = 85.0

@@ -26,34 +26,30 @@ app.post("/", async (c) => {
 
   try {
     if (body.signals && body.signals.length > 0) {
-      await db
-        .insert(signalEvaluations)
-        .values(body.signals)
-        .onConflictDoNothing();
+      for (const signal of body.signals) {
+        await db.insert(signalEvaluations).values(signal).onConflictDoNothing();
+      }
       counts.signals = body.signals.length;
     }
 
     if (body.gates && body.gates.length > 0) {
-      await db
-        .insert(gateResults)
-        .values(body.gates)
-        .onConflictDoNothing();
+      for (const gate of body.gates) {
+        await db.insert(gateResults).values(gate).onConflictDoNothing();
+      }
       counts.gates = body.gates.length;
     }
 
     if (body.executions && body.executions.length > 0) {
-      await db
-        .insert(executionEvents)
-        .values(body.executions)
-        .onConflictDoNothing();
+      for (const exec of body.executions) {
+        await db.insert(executionEvents).values(exec).onConflictDoNothing();
+      }
       counts.executions = body.executions.length;
     }
 
     if (body.reviews && body.reviews.length > 0) {
-      await db
-        .insert(tradeReviews)
-        .values(body.reviews)
-        .onConflictDoNothing();
+      for (const review of body.reviews) {
+        await db.insert(tradeReviews).values(review).onConflictDoNothing();
+      }
       counts.reviews = body.reviews.length;
     }
 

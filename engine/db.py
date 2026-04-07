@@ -23,6 +23,8 @@ class SignalRecord(SQLModel, table=True):
     strategy_version: str
     config_hash: str
     synced: bool = False
+    ai_conviction: Optional[float] = None
+    ai_analysis_json: Optional[str] = None
 
 
 class ExecutionRecord(SQLModel, table=True):
@@ -62,6 +64,7 @@ class PositionRecord(SQLModel, table=True):
     pnl_dollars: Optional[float] = None
     max_favorable_excursion: float = 0.0
     max_adverse_excursion: float = 0.0
+    reviewed: bool = False
 
 
 class ReviewRecord(SQLModel, table=True):

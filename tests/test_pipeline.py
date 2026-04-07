@@ -50,7 +50,7 @@ def test_pipeline_chop_rejects(chop_state, config):
 
 
 def test_pipeline_scores_when_all_gates_pass(trend_up_state, config):
-    """When all 10 gates pass, the scoring engine must be called and produce a real score."""
+    """When all 14 gates pass, the scoring engine must be called and produce a real score."""
     from unittest.mock import patch
     from engine.models import GateResult
 
@@ -73,7 +73,7 @@ def test_pipeline_scores_when_all_gates_pass(trend_up_state, config):
         "spread_params": {"net_debit": 75, "max_loss": 75, "max_gain": 175, "spread_width": 5},
     }
 
-    # Mock all 10 gates to pass
+    # Mock all 15 gates to pass
     with patch("engine.pipeline.check_regime", return_value=gate_result), \
          patch("engine.pipeline.check_alignment", return_value=gate_result), \
          patch("engine.pipeline.check_pullback", return_value=gate_result), \
@@ -83,7 +83,14 @@ def test_pipeline_scores_when_all_gates_pass(trend_up_state, config):
          patch("engine.pipeline.check_options_volatility", return_value=gate_result), \
          patch("engine.pipeline.check_liquidity", return_value=gate_result), \
          patch("engine.pipeline.check_position_construction", return_value=gate_result), \
-         patch("engine.pipeline.check_cooldown_exposure", return_value=gate_result):
+         patch("engine.pipeline.check_cooldown_exposure", return_value=gate_result), \
+         patch("engine.pipeline.check_correlation", return_value=gate_result), \
+         patch("engine.pipeline.check_vix_circuit_breaker", return_value=gate_result), \
+         patch("engine.pipeline.check_earnings_calendar", return_value=gate_result), \
+         patch("engine.pipeline.check_loss_circuit_breaker", return_value=gate_result), \
+         patch("engine.pipeline.check_news_sentiment", return_value=gate_result), \
+         patch("engine.pipeline.analyze_signal", return_value=None), \
+         patch("engine.pipeline.fetch_news_headlines", return_value=[]):
 
         result = run_pipeline(
             ticker="AAPL", ticker_bars=bars, market_state=trend_up_state,

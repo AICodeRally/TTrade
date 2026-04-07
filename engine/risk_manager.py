@@ -2,20 +2,24 @@
 from engine.config import TTRadeConfig
 
 MARKET_BUCKET = {"SPY", "QQQ"}
-TECH_BUCKET = {"AAPL", "MSFT", "NVDA"}
+TECH_BUCKET = {"AAPL", "MSFT"}
+SPECULATIVE_BUCKET = {"NVDA", "RKLB", "VCX"}
 
 
 def get_exposure_bucket(ticker: str) -> str:
     if ticker in MARKET_BUCKET: return "market"
     if ticker in TECH_BUCKET: return "tech"
+    if ticker in SPECULATIVE_BUCKET: return "speculative"
     return "other"
 
 
 def calculate_position_size(account_value: float, iv_rank: float, config: TTRadeConfig) -> float:
-    target = config.max_debit
+    # Hard cap: never risk more than max_risk_per_trade_pct of account
+    absolute_max = config.account_value * config.max_risk_per_trade_pct
+    target = min(config.max_debit, absolute_max)
     if iv_rank > config.iv_rank_reduce_threshold:
         target *= 0.5
-    return max(config.min_debit, min(target, config.max_debit))
+    return max(config.min_debit, min(target, absolute_max))
 
 
 def select_strikes(chain: list[dict], direction: str, target_debit: float, config: TTRadeConfig) -> dict | None:

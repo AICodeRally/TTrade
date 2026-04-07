@@ -154,6 +154,74 @@ def approve(signal_id: str):
 
 
 @cli.command()
+def scan():
+    """Run a single scan cycle now (ignores market hours)."""
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
+    config = TTRadeConfig()
+    engine = _get_db_engine()
+    click.echo(f"Running manual scan for: {', '.join(config.tickers)}")
+    from engine.main import run_scan_cycle
+    with Session(engine) as session:
+        run_scan_cycle(config, session)
+    # Show results
+    with Session(engine) as session:
+        signals = session.exec(select(SignalRecord).order_by(SignalRecord.timestamp.desc()).limit(10)).all()
+        click.echo(f"\n{len(signals)} signals in DB:")
+        for s in signals:
+            status = "PASS" if s.all_gates_passed else "FAIL"
+            click.echo(f"  {s.ticker:5s} {s.direction:8s} {status:4s} score={s.signal_score or 0:.0f} state={s.market_state} [{s.action_taken}]")
+
+
+@cli.command()
+def sync():
+    """Sync local signals to the Cloudflare D1 Worker."""
+    import requests
+    config = TTRadeConfig()
+    engine = _get_db_engine()
+    worker_url = os.environ.get("TTRADE_WORKER_URL", "https://ttrade-worker.aicoderally.workers.dev")
+
+    with Session(engine) as session:
+        signals = session.exec(select(SignalRecord).where(SignalRecord.synced == False)).all()
+        if not signals:
+            click.echo("No unsynced signals.")
+            return
+
+        click.echo(f"Syncing {len(signals)} signals to {worker_url}/sync ...")
+
+        payload = {
+            "signals": [
+                {
+                    "signalId": s.signal_id,
+                    "ticker": s.ticker,
+                    "direction": s.direction,
+                    "timestamp": s.timestamp.isoformat(),
+                    "marketState": s.market_state,
+                    "allGatesPassed": 1 if s.all_gates_passed else 0,
+                    "gateResultsJson": s.gate_results_json,
+                    "signalScore": s.signal_score,
+                    "componentScoresJson": s.component_scores_json,
+                    "actionTaken": s.action_taken,
+                    "strategyVersion": s.strategy_version,
+                    "configHash": s.config_hash,
+                }
+                for s in signals
+            ]
+        }
+
+        resp = requests.post(f"{worker_url}/sync", json=payload, timeout=30)
+        if resp.ok:
+            data = resp.json()
+            click.echo(f"Synced: {data}")
+            # Mark as synced
+            for s in signals:
+                s.synced = True
+                session.add(s)
+            session.commit()
+        else:
+            click.echo(f"Sync failed: {resp.status_code} {resp.text}", err=True)
+
+
+@cli.command()
 @click.option("--paper", is_flag=True, help="Run in paper trading mode")
 def run(paper: bool):
     """Start the trading engine."""

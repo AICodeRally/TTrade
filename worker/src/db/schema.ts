@@ -19,6 +19,8 @@ export const signalEvaluations = sqliteTable("signal_evaluations", {
   actionTaken: text("action_taken"),
   strategyVersion: text("strategy_version"),
   configHash: text("config_hash"),
+  aiConviction: real("ai_conviction"),
+  aiAnalysisJson: text("ai_analysis_json"),
   createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
 });
 
@@ -88,6 +90,7 @@ export const tradeReviews = sqliteTable("trade_reviews", {
   failureTagsJson: text("failure_tags_json"),
   counterfactualsJson: text("counterfactuals_json"),
   reviewNotes: text("review_notes"),
+  aiReviewJson: text("ai_review_json"),
   strategyVersion: text("strategy_version"),
   configHash: text("config_hash"),
   createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),

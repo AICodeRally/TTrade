@@ -4,7 +4,7 @@ from engine.config import TTRadeConfig
 
 def test_config_defaults():
     cfg = TTRadeConfig()
-    assert cfg.tickers == ("SPY", "QQQ", "AAPL", "MSFT", "NVDA")
+    assert cfg.tickers == ("SPY", "QQQ", "AAPL", "MSFT", "NVDA", "VCX", "RKLB")
     assert cfg.ma_period == 20
     assert cfg.stop_loss_pct == -0.40
     assert cfg.profit_target_pct == 0.60

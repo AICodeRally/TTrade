@@ -53,6 +53,8 @@ class SignalEvaluation(BaseModel):
     action_taken: Literal["execute", "alert", "log", "reject"]
     strategy_version: str
     config_hash: str
+    ai_conviction: float | None = None
+    ai_analysis: dict | None = None
 
 
 class SpreadLeg(BaseModel):

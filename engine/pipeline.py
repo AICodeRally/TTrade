@@ -1,12 +1,17 @@
-"""Pipeline runner — orchestrates all 10 gates + scoring."""
+"""Pipeline runner — orchestrates all 15 gates + scoring + AI analysis."""
+import logging
 import uuid
 from datetime import datetime
 import pandas as pd
+from sqlmodel import Session
 from engine.config import TTRadeConfig
 from engine.market_data import compute_sma, compute_atr, average_volume
 from engine.market_state import MarketStateResult
 from engine.models import GateResult, MarketState, SignalEvaluation
 from engine.scoring import score_signal
+from engine.ai_analyst import analyze_signal, fetch_news_headlines
+
+logger = logging.getLogger(__name__)
 from engine.gates.regime import check_regime
 from engine.gates.alignment import check_alignment
 from engine.gates.pullback import check_pullback
@@ -17,6 +22,11 @@ from engine.gates.options_volatility import check_options_volatility
 from engine.gates.liquidity import check_liquidity
 from engine.gates.position_construction import check_position_construction
 from engine.gates.cooldown_exposure import check_cooldown_exposure
+from engine.gates.correlation import check_correlation
+from engine.gates.vix_circuit_breaker import check_vix_circuit_breaker
+from engine.gates.earnings_calendar import check_earnings_calendar
+from engine.gates.loss_circuit_breaker import check_loss_circuit_breaker
+from engine.gates.news_sentiment import check_news_sentiment
 
 
 def determine_direction(state: MarketState) -> str | None:
@@ -29,6 +39,7 @@ def run_pipeline(
     ticker: str, ticker_bars: pd.DataFrame, market_state: MarketStateResult,
     option_data: dict, open_positions: list[dict], last_fill_time: datetime | None,
     fills_today: int, days_to_earnings: int | None, config: TTRadeConfig,
+    session: Session | None = None,
 ) -> SignalEvaluation:
     gate_results: list[GateResult] = []
     direction = determine_direction(market_state.state)
@@ -93,6 +104,37 @@ def run_pipeline(
     g10 = check_cooldown_exposure(last_fill_time, fills_today, open_positions, ticker, direction, config)
     gate_results.append(g10)
     if not g10.passed:
+        return _build_evaluation(ticker, direction, market_state, gate_results, False, config)
+
+    # Gate 11: Correlation guard — block overlapping speculative trades
+    g11 = check_correlation(ticker, direction, open_positions, config)
+    gate_results.append(g11)
+    if not g11.passed:
+        return _build_evaluation(ticker, direction, market_state, gate_results, False, config)
+
+    # Gate 12: VIX circuit breaker — block when VIX > 30
+    g12 = check_vix_circuit_breaker(config)
+    gate_results.append(g12)
+    if not g12.passed:
+        return _build_evaluation(ticker, direction, market_state, gate_results, False, config)
+
+    # Gate 13: Earnings calendar — live earnings date check
+    g13 = check_earnings_calendar(ticker, config)
+    gate_results.append(g13)
+    if not g13.passed:
+        return _build_evaluation(ticker, direction, market_state, gate_results, False, config)
+
+    # Gate 14: Loss circuit breaker — daily/weekly loss limit
+    if session is not None:
+        g14 = check_loss_circuit_breaker(session, config)
+        gate_results.append(g14)
+        if not g14.passed:
+            return _build_evaluation(ticker, direction, market_state, gate_results, False, config)
+
+    # Gate 15: News sentiment — block on strongly adverse news
+    g15 = check_news_sentiment(ticker, direction, config)
+    gate_results.append(g15)
+    if not g15.passed:
         return _build_evaluation(ticker, direction, market_state, gate_results, False, config)
 
     return _build_evaluation(ticker, direction, market_state, gate_results, True, config,
@@ -197,6 +239,8 @@ def _build_evaluation(
 ) -> SignalEvaluation:
     signal_score = None
     component_scores = None
+    ai_conviction = None
+    ai_analysis = None
     action = "reject"
 
     if all_passed and ticker_bars is not None and option_data is not None:
@@ -207,6 +251,41 @@ def _build_evaluation(
         if signal_score >= config.min_score_execute: action = "execute"
         elif signal_score >= config.min_score_alert: action = "alert"
         elif signal_score >= config.min_score_log: action = "log"
+
+        # AI analysis for signals that score high enough to alert
+        if action in ("execute", "alert"):
+            try:
+                recent_prices = _extract_recent_prices(ticker_bars)
+                news = fetch_news_headlines(ticker)
+                gate_dicts = [{"gate_name": g.gate_name, "passed": g.passed,
+                               "measured_value": str(g.measured_value),
+                               "threshold": str(g.threshold)} for g in gate_results]
+
+                result = analyze_signal(
+                    ticker=ticker, direction=direction,
+                    signal_score=signal_score, component_scores=component_scores,
+                    market_state=market_state.state.value, gate_results=gate_dicts,
+                    recent_prices=recent_prices, news_headlines=news,
+                )
+                if result:
+                    ai_conviction = result.conviction
+                    ai_analysis = {
+                        "conviction": result.conviction,
+                        "reasoning": result.reasoning,
+                        "risk_factors": result.risk_factors,
+                        "trade_quality": result.trade_quality,
+                        "summary": result.summary,
+                    }
+                    logger.info("AI: %s — conviction=%.0f quality=%s",
+                                result.summary, result.conviction, result.trade_quality)
+
+                    # AI can downgrade action if conviction is very low
+                    if result.trade_quality == "PASS" and action == "execute":
+                        action = "alert"
+                        logger.warning("AI downgraded %s from execute to alert (PASS quality)", ticker)
+            except Exception as e:
+                logger.warning("AI analysis failed for %s: %s", ticker, e)
+
     elif all_passed:
         signal_score = 0.0
         action = "log"
@@ -218,4 +297,21 @@ def _build_evaluation(
         signal_score=signal_score, component_scores=component_scores,
         action_taken=action, strategy_version=config.strategy_version,
         config_hash=config.config_hash,
+        ai_conviction=ai_conviction, ai_analysis=ai_analysis,
     )
+
+
+def _extract_recent_prices(ticker_bars: pd.DataFrame) -> list[dict]:
+    """Extract last 10 bars as dicts for AI analysis."""
+    recent = ticker_bars.tail(10)
+    prices = []
+    for idx, row in recent.iterrows():
+        prices.append({
+            "date": str(idx.date()) if hasattr(idx, "date") else str(idx),
+            "open": float(row["Open"]),
+            "high": float(row["High"]),
+            "low": float(row["Low"]),
+            "close": float(row["Close"]),
+            "volume": int(row["Volume"]),
+        })
+    return prices
