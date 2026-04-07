@@ -94,6 +94,31 @@
   .ai-panel .ai-reason { color: var(--text-dim); }
   .ai-panel .ai-risks { margin-top: 6px; }
   .ai-panel .ai-risks span { display: inline-block; background: rgba(239,68,68,0.1); color: var(--red); padding: 2px 6px; border-radius: 3px; margin: 2px 4px 2px 0; font-size: 11px; }
+  .gate-bar { display: flex; gap: 2px; align-items: center; }
+  .gate-pip { width: 20px; height: 16px; border-radius: 3px; font-size: 9px; display: flex; align-items: center; justify-content: center; font-weight: 700; }
+  .gate-pip.pass { background: rgba(34,197,94,0.25); color: var(--green); }
+  .gate-pip.fail { background: rgba(239,68,68,0.15); color: var(--red); }
+  .gate-pip.skip { background: rgba(100,116,139,0.1); color: var(--text-dim); }
+  .gate-score { font-size: 14px; font-weight: 700; margin-left: 8px; }
+  .lev-signal { background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; padding: 16px; margin-bottom: 12px; }
+  .lev-signal.buy { border-left: 3px solid var(--green); }
+  .lev-signal.watch { border-left: 3px solid var(--amber); }
+  .lev-signal.avoid { border-left: 3px solid var(--text-dim); }
+  .lev-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+  .lev-ticker { font-size: 18px; font-weight: 700; color: var(--cyan); }
+  .lev-action { font-size: 13px; font-weight: 700; padding: 4px 12px; border-radius: 4px; }
+  .lev-action.buy { background: rgba(34,197,94,0.2); color: var(--green); }
+  .lev-action.watch { background: rgba(245,158,11,0.2); color: var(--amber); }
+  .lev-action.avoid { background: rgba(100,116,139,0.2); color: var(--text-dim); }
+  .lev-details { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: 8px; }
+  .lev-detail { text-align: center; }
+  .lev-detail .label { font-size: 10px; color: var(--text-dim); text-transform: uppercase; }
+  .lev-detail .val { font-size: 14px; font-weight: 600; margin-top: 2px; }
+  .lev-checks { display: flex; gap: 12px; margin-top: 6px; font-size: 12px; }
+  .lev-check { display: flex; align-items: center; gap: 4px; }
+  .lev-check .dot-sm { width: 6px; height: 6px; border-radius: 50%; display: inline-block; }
+  .lev-check .dot-sm.pass { background: var(--green); }
+  .lev-check .dot-sm.fail { background: var(--red); }
   .status-ok { color: var(--green); }
   .status-warn { color: var(--amber); }
   .status-danger { color: var(--red); }
@@ -115,6 +140,8 @@
   <button class="active" onclick="showPage('overview')">Overview</button>
   <button onclick="showPage('watchlist')">Watchlist</button>
   <button onclick="showPage('signals')">Signals</button>
+  <button onclick="showPage('screener')">Screener</button>
+  <button onclick="showPage('leverage')">Leverage</button>
   <button onclick="showPage('positions')">Positions</button>
 </div>
 
@@ -185,6 +212,38 @@
     </div>
   </div>
 
+  <!-- SCREENER PAGE -->
+  <div class="page" id="page-screener">
+    <div class="card">
+      <h2>Gate Pipeline Screener <span class="sub" id="screener-count"></span></h2>
+      <div class="sub" style="margin-bottom:12px;">Shows which gates each ticker passes. Tickers closer to 4/4 are nearest to triggering a signal.</div>
+      <div id="screener-content"><div class="empty">Loading...</div></div>
+    </div>
+  </div>
+
+  <!-- LEVERAGE PAGE -->
+  <div class="page" id="page-leverage">
+    <div class="row row-3">
+      <div class="card" id="lev-regime-card">
+        <h2>Regime</h2>
+        <div id="lev-regime"><div class="empty">--</div></div>
+      </div>
+      <div class="card" id="lev-strategy-card">
+        <h2>Strategy</h2>
+        <div id="lev-strategy"><div class="empty">--</div></div>
+      </div>
+      <div class="card" id="lev-account-card">
+        <h2>Account</h2>
+        <div id="lev-account"><div class="empty">--</div></div>
+      </div>
+    </div>
+    <div class="card">
+      <h2>3x Leveraged ETF Scanner</h2>
+      <div class="sub" style="margin-bottom:12px;">Aggressive mode — trades inverse/leveraged ETFs based on market regime. 2R risk/reward with ATR-based stops.</div>
+      <div id="leverage-content"><div class="empty">Loading...</div></div>
+    </div>
+  </div>
+
   <!-- POSITIONS PAGE -->
   <div class="page" id="page-positions">
     <div class="card">
@@ -199,7 +258,7 @@ const API = 'https://ttrade-worker.aicoderally.workers.dev';
 const TOKEN = 'U4tu4SJCEjOePmrvgj52uZyK7OMGQktuQuJKX8Px7qA';
 const AUTH = { 'Authorization': 'Bearer ' + TOKEN };
 
-const DEFAULT_WATCHLIST = ['SPY', 'QQQ', 'AAPL', 'MSFT', 'NVDA', 'VCX', 'RKLB'];
+const DEFAULT_WATCHLIST = ['SPY', 'QQQ', 'IWM', 'DIA', 'XLF', 'XLE', 'XLK', 'GLD', 'AAPL', 'MSFT', 'NVDA', 'AMD', 'META', 'GOOG', 'AMZN', 'TSLA', 'RKLB', 'VCX'];
 let watchlist = JSON.parse(localStorage.getItem('ttrade_watchlist')) || DEFAULT_WATCHLIST;
 let quotesCache = {};
 let dashCache = {};
@@ -840,9 +899,169 @@ function renderGateStatus(signals) {
   }
 }
 
+function renderScreener(signals) {
+  const c = $('screener-content'); c.textContent = '';
+  if (!signals || !signals.length) { c.appendChild(el('div', { className: 'empty', textContent: 'No signals — run a scan first' })); return; }
+
+  // Group by ticker, take most recent for each
+  const byTicker = {};
+  signals.forEach(s => {
+    if (!byTicker[s.ticker]) byTicker[s.ticker] = s;
+  });
+
+  const gateNames = ['market_regime', 'ticker_alignment', 'pullback_setup', 'confirmation'];
+  const gateLabels = { 'market_regime': 'RGM', 'ticker_alignment': 'ALN', 'pullback_setup': 'PLB', 'confirmation': 'CFM' };
+
+  const rows = Object.values(byTicker).map(s => {
+    let gates = [];
+    try { gates = s.gateResultsJson ? JSON.parse(s.gateResultsJson) : []; } catch(e) {}
+    const gateMap = {};
+    gates.forEach(g => gateMap[g.gate_name] = g);
+    const passed = gates.filter(g => g.passed).length;
+    const total = gates.length;
+    return { signal: s, gates, gateMap, passed, total };
+  });
+
+  rows.sort((a, b) => b.passed - a.passed || a.signal.ticker.localeCompare(b.signal.ticker));
+  $('screener-count').textContent = rows.length + ' tickers';
+
+  const table = el('table');
+  const headerCells = ['Ticker', 'Dir', 'Gates'].concat(gateNames.map(g => gateLabels[g] || g)).concat(['Score', 'Action']);
+  table.appendChild(el('thead', null, [el('tr', null, headerCells.map(t => el('th', { textContent: t })))]));
+
+  const tbody = el('tbody');
+  rows.forEach(r => {
+    const s = r.signal;
+    const pipCells = gateNames.map(gn => {
+      const g = r.gateMap[gn];
+      if (!g) return el('td', null, [el('span', { className: 'gate-pip skip', textContent: '-' })]);
+      return el('td', null, [el('span', { className: 'gate-pip ' + (g.passed ? 'pass' : 'fail'), textContent: g.passed ? 'P' : 'F' })]);
+    });
+
+    const scoreClass = r.passed >= 4 ? 'up' : r.passed >= 3 ? 'status-warn' : '';
+    const actionCls = s.actionTaken === 'reject' ? 'badge-fail' : 'badge-pass';
+
+    tbody.appendChild(el('tr', null, [
+      el('td', { className: 'ticker', textContent: s.ticker }),
+      el('td', { textContent: s.direction }),
+      el('td', null, [el('span', { className: 'gate-score ' + scoreClass, textContent: r.passed + '/' + Math.max(r.total, 4) })]),
+      ...pipCells,
+      el('td', { textContent: s.signalScore != null ? s.signalScore.toFixed(0) : '--' }),
+      el('td', null, [el('span', { className: 'badge ' + actionCls, textContent: (s.actionTaken || '--').toUpperCase() })]),
+    ]));
+  });
+  table.appendChild(tbody);
+  c.appendChild(table);
+}
+
+const LEV_ETFS = {
+  TREND_DOWN: [
+    { ticker: 'SQQQ', tracks: 'QQQ', desc: '3x Inverse Nasdaq', leverage: 3 },
+    { ticker: 'SPXU', tracks: 'SPY', desc: '3x Inverse S&P 500', leverage: 3 },
+    { ticker: 'SOXS', tracks: 'SOXX', desc: '3x Inverse Semiconductors', leverage: 3 },
+  ],
+  TREND_UP: [
+    { ticker: 'TQQQ', tracks: 'QQQ', desc: '3x Nasdaq', leverage: 3 },
+    { ticker: 'UPRO', tracks: 'SPY', desc: '3x S&P 500', leverage: 3 },
+    { ticker: 'SOXL', tracks: 'SOXX', desc: '3x Semiconductors', leverage: 3 },
+  ],
+};
+
+function renderLeverage(signals, quotes) {
+  const regC = $('lev-regime'); regC.textContent = '';
+  const stratC = $('lev-strategy'); stratC.textContent = '';
+  const acctC = $('lev-account'); acctC.textContent = '';
+  const c = $('leverage-content'); c.textContent = '';
+
+  // Get regime from signals
+  let regime = 'UNKNOWN';
+  if (signals && signals.length) regime = signals[0].marketState || 'UNKNOWN';
+  const regCls = regime === 'CHOP' ? 'badge-chop' : regime === 'TREND_UP' ? 'badge-trend-up' : 'badge-trend-down';
+  regC.appendChild(el('div', { style: 'text-align:center; padding:8px;' }, [
+    el('span', { className: 'badge ' + regCls, textContent: regime, style: 'font-size:16px; padding:6px 14px;' }),
+  ]));
+  const direction = regime === 'TREND_DOWN' ? 'BEARISH (inverse ETFs)' : regime === 'TREND_UP' ? 'BULLISH (leveraged ETFs)' : 'NO TRADE (CHOP)';
+  regC.appendChild(el('div', { className: 'sub', textContent: direction, style: 'text-align:center; margin-top:6px;' }));
+
+  stratC.appendChild(el('div', { className: 'metrics' }, [
+    el('div', { className: 'metric' }, [el('div', { className: 'label', textContent: 'Risk/Trade' }), el('div', { className: 'value', textContent: '10%' })]),
+    el('div', { className: 'metric' }, [el('div', { className: 'label', textContent: 'Stop' }), el('div', { className: 'value', textContent: '1.5 ATR' })]),
+    el('div', { className: 'metric' }, [el('div', { className: 'label', textContent: 'Target' }), el('div', { className: 'value', textContent: '2R' })]),
+  ]));
+
+  acctC.appendChild(el('div', { className: 'metrics' }, [
+    el('div', { className: 'metric' }, [el('div', { className: 'label', textContent: 'Account' }), el('div', { className: 'value', textContent: '$1,000' })]),
+    el('div', { className: 'metric' }, [el('div', { className: 'label', textContent: 'Max Risk' }), el('div', { className: 'value', textContent: '$100' })]),
+    el('div', { className: 'metric' }, [el('div', { className: 'label', textContent: 'Max Position' }), el('div', { className: 'value', textContent: '50%' })]),
+  ]));
+
+  if (regime === 'CHOP') {
+    c.appendChild(el('div', { className: 'empty', textContent: 'CHOP regime — no leveraged ETF trades. Wait for trend confirmation.' }));
+    return;
+  }
+
+  const etfs = LEV_ETFS[regime] || [];
+  if (!etfs.length) { c.appendChild(el('div', { className: 'empty', textContent: 'No ETFs for ' + regime })); return; }
+
+  etfs.forEach(etf => {
+    const q = quotesCache[etf.ticker];
+    const price = q ? parseFloat(q.last || 0) : null;
+
+    const card = el('div', { className: 'lev-signal' });
+
+    // Header
+    const header = el('div', { className: 'lev-header' });
+    header.appendChild(el('div', null, [
+      el('span', { className: 'lev-ticker', textContent: etf.ticker }),
+      el('span', { className: 'sub', textContent: '  ' + etf.desc + ' (tracks ' + etf.tracks + ')', style: 'margin-left:8px;' }),
+    ]));
+    if (price) {
+      header.appendChild(el('span', { style: 'font-size:18px; font-weight:700;', textContent: '$' + price.toFixed(2) }));
+    }
+    card.appendChild(header);
+
+    if (price) {
+      // Approximate ATR as 3% of price for display (real ATR comes from engine)
+      const atrEst = price * 0.06; // leveraged ETFs have ~6% daily ATR equivalent
+      const stopDist = atrEst * 1.5;
+      const stop = price - stopDist;
+      const target = price + (stopDist * 2);
+      const maxRisk = 100; // 10% of $1000
+      const shares = Math.min(Math.floor(maxRisk / stopDist), Math.floor(500 / price));
+      const posDollars = shares * price;
+      const pnlWin = shares * (target - price);
+      const pnlLoss = shares * (stop - price);
+
+      const details = el('div', { className: 'lev-details' });
+      [
+        ['Entry', '$' + price.toFixed(2), ''],
+        ['Stop', '$' + stop.toFixed(2), 'down'],
+        ['Target', '$' + target.toFixed(2), 'up'],
+        ['Shares', shares.toString(), ''],
+        ['Size', '$' + posDollars.toFixed(0), ''],
+        ['Win P&L', '+$' + pnlWin.toFixed(0), 'up'],
+        ['Loss P&L', '-$' + Math.abs(pnlLoss).toFixed(0), 'down'],
+        ['R/R', '2.0:1', 'up'],
+      ].forEach(([label, val, cls]) => {
+        details.appendChild(el('div', { className: 'lev-detail' }, [
+          el('div', { className: 'label', textContent: label }),
+          el('div', { className: 'val ' + cls, textContent: val }),
+        ]));
+      });
+      card.appendChild(details);
+    } else {
+      card.appendChild(el('div', { className: 'empty', textContent: 'Add ' + etf.ticker + ' to watchlist for live quotes' }));
+    }
+
+    c.appendChild(card);
+  });
+}
+
 async function fetchAll() {
   try {
-    const syms = watchlist.join(',');
+    const levTickers = ['SQQQ', 'SPXU', 'SOXS', 'TQQQ', 'UPRO', 'SOXL'];
+    const allSyms = [...new Set([...watchlist, ...levTickers])];
+    const syms = allSyms.join(',');
     const [dashRes, quotesRes, portfolioRes] = await Promise.all([
       fetch(API + '/dashboard', { headers: AUTH }).then(r => r.json()),
       fetch(API + '/market/quotes?symbols=' + syms, { headers: AUTH }).then(r => r.json()),
@@ -861,6 +1080,8 @@ async function fetchAll() {
     renderQuotesTable('watchlist-quotes', quotesRes.quotes, true);
     renderSignals('overview-signals', dashRes.recentSignals);
     renderSignals('signals-content', dashRes.recentSignals);
+    renderScreener(dashRes.recentSignals);
+    renderLeverage(dashRes.recentSignals, quotesRes.quotes);
     renderPositions(dashRes.openPositions);
     $('quote-count').textContent = watchlist.length + ' tickers';
   } catch (err) {
