@@ -42,6 +42,16 @@ The Python engine never calls AI providers directly. It always goes through the 
 - Use `CF_AIG_TOKEN` — the binding handles auth
 - Skip the gateway for "quick tests" — all calls must be logged
 
+## Keychain (for non-Worker callers)
+
+If a Python script or CLI tool ever needs to call the gateway directly (not through the Worker):
+
+```bash
+security find-generic-password -a todd.lebaron -s CF_AIG_TOKEN -w
+```
+
+All secrets use uniform Keychain lookup: `-a todd.lebaron -s <NAME> -w`
+
 ## Canonical Reference
 
 Full gateway docs, provider switching, model tiers:
