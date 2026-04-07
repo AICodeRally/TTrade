@@ -3,6 +3,53 @@ import { Env } from "../types";
 
 const app = new Hono<{ Bindings: Env }>();
 
+// ── CF AI Gateway config ────────────────────────────────────
+const CF_ACCOUNT_ID = "6ceba245c301bc15f3bea5653778b760";
+const CF_GATEWAY_NAME = "aicr";
+const BYOK_ALIAS = "anthro-01";
+const MODEL = "claude-haiku-4-5-20251001";
+
+function gatewayUrl(): string {
+  return `https://gateway.ai.cloudflare.com/v1/${CF_ACCOUNT_ID}/${CF_GATEWAY_NAME}/anthropic/v1/messages`;
+}
+
+function gatewayHeaders(aigToken: string): Record<string, string> {
+  return {
+    "content-type": "application/json",
+    "cf-aig-authorization": `Bearer ${aigToken}`,
+    "cf-aig-byok-alias": BYOK_ALIAS,
+    "anthropic-version": "2023-06-01",
+  };
+}
+
+async function callClaude(
+  aigToken: string,
+  system: string,
+  userPrompt: string,
+  maxTokens = 512,
+): Promise<string> {
+  const resp = await fetch(gatewayUrl(), {
+    method: "POST",
+    headers: gatewayHeaders(aigToken),
+    body: JSON.stringify({
+      model: MODEL,
+      max_tokens: maxTokens,
+      system,
+      messages: [{ role: "user", content: userPrompt }],
+    }),
+  });
+
+  if (!resp.ok) {
+    const errText = await resp.text();
+    throw new Error(`Gateway ${resp.status}: ${errText.slice(0, 200)}`);
+  }
+
+  const result = (await resp.json()) as {
+    content: Array<{ type: string; text: string }>;
+  };
+  return result.content?.[0]?.text || "";
+}
+
 interface AnalyzeRequest {
   ticker: string;
   direction: "bullish" | "bearish";
@@ -57,9 +104,9 @@ Always respond with valid JSON matching this schema:
 }`;
 
 app.post("/analyze", async (c) => {
-  const apiKey = c.env.ANTHROPIC_API_KEY;
-  if (!apiKey) {
-    return c.json({ ok: false, error: "ANTHROPIC_API_KEY not configured" }, 500);
+  const aigToken = c.env.CF_AIG_TOKEN;
+  if (!aigToken) {
+    return c.json({ ok: false, error: "CF_AIG_TOKEN not configured" }, 500);
   }
 
   const body = await c.req.json<AnalyzeRequest>();
@@ -98,41 +145,18 @@ ${newsContext}
 
 Provide your conviction analysis as JSON.`;
 
-  const resp = await fetch("https://api.anthropic.com/v1/messages", {
-    method: "POST",
-    headers: {
-      "x-api-key": apiKey,
-      "anthropic-version": "2023-06-01",
-      "content-type": "application/json",
-    },
-    body: JSON.stringify({
-      model: "claude-haiku-4-5-20251001",
-      max_tokens: 512,
-      system: SYSTEM_PROMPT,
-      messages: [{ role: "user", content: userPrompt }],
-    }),
-  });
-
-  if (!resp.ok) {
-    const errText = await resp.text();
-    return c.json({ ok: false, error: `Claude API: ${resp.status} ${errText.slice(0, 200)}` }, 502);
+  try {
+    const text = await callClaude(aigToken, SYSTEM_PROMPT, userPrompt);
+    const jsonMatch = text.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) {
+      return c.json({ ok: false, error: "Failed to parse AI response", raw: text }, 500);
+    }
+    const analysis = JSON.parse(jsonMatch[0]) as AnalyzeResponse;
+    return c.json({ ok: true, analysis });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return c.json({ ok: false, error: msg }, 502);
   }
-
-  const result = (await resp.json()) as {
-    content: Array<{ type: string; text: string }>;
-  };
-
-  const text = result.content?.[0]?.text || "";
-
-  // Parse JSON from Claude's response
-  const jsonMatch = text.match(/\{[\s\S]*\}/);
-  if (!jsonMatch) {
-    return c.json({ ok: false, error: "Failed to parse AI response", raw: text }, 500);
-  }
-
-  const analysis = JSON.parse(jsonMatch[0]) as AnalyzeResponse;
-
-  return c.json({ ok: true, analysis });
 });
 
 interface ReviewTradeRequest {
@@ -173,9 +197,9 @@ Always respond with valid JSON:
 }`;
 
 app.post("/review-trade", async (c) => {
-  const apiKey = c.env.ANTHROPIC_API_KEY;
-  if (!apiKey) {
-    return c.json({ ok: false, error: "ANTHROPIC_API_KEY not configured" }, 500);
+  const aigToken = c.env.CF_AIG_TOKEN;
+  if (!aigToken) {
+    return c.json({ ok: false, error: "CF_AIG_TOKEN not configured" }, 500);
   }
 
   const body = await c.req.json<ReviewTradeRequest>();
@@ -201,38 +225,18 @@ Failure Tags: ${body.failure_tags.length > 0 ? body.failure_tags.join(", ") : "N
 
 Provide your coaching review as JSON.`;
 
-  const resp = await fetch("https://api.anthropic.com/v1/messages", {
-    method: "POST",
-    headers: {
-      "x-api-key": apiKey,
-      "anthropic-version": "2023-06-01",
-      "content-type": "application/json",
-    },
-    body: JSON.stringify({
-      model: "claude-haiku-4-5-20251001",
-      max_tokens: 512,
-      system: REVIEW_SYSTEM_PROMPT,
-      messages: [{ role: "user", content: userPrompt }],
-    }),
-  });
-
-  if (!resp.ok) {
-    const errText = await resp.text();
-    return c.json({ ok: false, error: `Claude API: ${resp.status} ${errText.slice(0, 200)}` }, 502);
+  try {
+    const text = await callClaude(aigToken, REVIEW_SYSTEM_PROMPT, userPrompt);
+    const jsonMatch = text.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) {
+      return c.json({ ok: false, error: "Failed to parse AI review", raw: text }, 500);
+    }
+    const review = JSON.parse(jsonMatch[0]);
+    return c.json({ ok: true, review });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return c.json({ ok: false, error: msg }, 502);
   }
-
-  const result = (await resp.json()) as {
-    content: Array<{ type: string; text: string }>;
-  };
-
-  const text = result.content?.[0]?.text || "";
-  const jsonMatch = text.match(/\{[\s\S]*\}/);
-  if (!jsonMatch) {
-    return c.json({ ok: false, error: "Failed to parse AI review", raw: text }, 500);
-  }
-
-  const review = JSON.parse(jsonMatch[0]);
-  return c.json({ ok: true, review });
 });
 
 export default app;

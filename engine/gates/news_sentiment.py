@@ -25,8 +25,9 @@ def _get_keychain_value(service_name: str) -> str:
 
 
 def _fetch_and_score_news(ticker: str, direction: str, dashboard_token: str) -> tuple[str, float]:
-    """Fetch news from Worker and score sentiment via AI endpoint.
+    """Fetch news from Worker and score sentiment via Worker AI endpoint.
 
+    All AI calls route through the Cloudflare AI Gateway on the Worker side.
     Returns (sentiment, score) where sentiment is bullish/bearish/neutral
     and score is -1.0 to 1.0.
     """
@@ -48,70 +49,32 @@ def _fetch_and_score_news(ticker: str, direction: str, dashboard_token: str) -> 
     if not headlines:
         return "neutral", 0.0
 
-    # Score headlines via Claude
-    api_key = os.environ.get("ANTHROPIC_API_KEY") or _get_keychain_value("ttrade-ANTHROPIC_API_KEY")
-    if not api_key:
-        # Try scoring via Worker AI endpoint instead
-        try:
-            payload = {
-                "ticker": ticker,
-                "direction": direction,
-                "signal_score": 0,
-                "component_scores": {},
-                "market_state": "unknown",
-                "gate_results": [],
-                "recent_prices": [],
-                "news_headlines": headlines,
-            }
-            resp = requests.post(
-                f"{worker_url}/ai/analyze",
-                json=payload,
-                headers={"Authorization": f"Bearer {dashboard_token}"},
-                timeout=15,
-            )
-            if resp.ok and resp.json().get("ok"):
-                analysis = resp.json()["analysis"]
-                conviction = analysis.get("conviction", 50)
-                if conviction >= 60:
-                    return "bullish" if direction == "bullish" else "bearish", conviction / 100.0
-                elif conviction <= 30:
-                    return "bearish" if direction == "bullish" else "bullish", -conviction / 100.0
-                return "neutral", 0.0
-        except Exception:
-            pass
-        return "neutral", 0.0
-
-    # Direct Claude API call for sentiment scoring
+    # Score via Worker AI endpoint (routes through CF AI Gateway)
     try:
-        system = (
-            "You are a financial news sentiment scorer. Given headlines about a stock, "
-            "score the overall sentiment from -1.0 (very bearish) to 1.0 (very bullish). "
-            "Respond with ONLY valid JSON: {\"sentiment\": \"bullish|bearish|neutral\", \"score\": <float>}"
-        )
-        user_msg = f"Score the sentiment of these {ticker} headlines:\n" + "\n".join(f"- {h}" for h in headlines)
-
+        payload = {
+            "ticker": ticker,
+            "direction": direction,
+            "signal_score": 0,
+            "component_scores": {},
+            "market_state": "unknown",
+            "gate_results": [],
+            "recent_prices": [],
+            "news_headlines": headlines,
+        }
         resp = requests.post(
-            "https://api.anthropic.com/v1/messages",
-            json={
-                "model": "claude-haiku-4-5-20251001",
-                "max_tokens": 64,
-                "system": system,
-                "messages": [{"role": "user", "content": user_msg}],
-            },
-            headers={
-                "x-api-key": api_key,
-                "anthropic-version": "2023-06-01",
-                "content-type": "application/json",
-            },
+            f"{worker_url}/ai/analyze",
+            json=payload,
+            headers={"Authorization": f"Bearer {dashboard_token}"},
             timeout=15,
         )
-        if resp.ok:
-            import json
-            text = resp.json()["content"][0]["text"]
-            match = __import__("re").search(r"\{[\s\S]*\}", text)
-            if match:
-                data = json.loads(match.group())
-                return data.get("sentiment", "neutral"), data.get("score", 0.0)
+        if resp.ok and resp.json().get("ok"):
+            analysis = resp.json()["analysis"]
+            conviction = analysis.get("conviction", 50)
+            if conviction >= 60:
+                return "bullish" if direction == "bullish" else "bearish", conviction / 100.0
+            elif conviction <= 30:
+                return "bearish" if direction == "bullish" else "bullish", -conviction / 100.0
+            return "neutral", 0.0
     except Exception as e:
         logger.debug("News sentiment scoring failed: %s", e)
 
