@@ -3,41 +3,38 @@ import { Env } from "../types";
 
 const app = new Hono<{ Bindings: Env }>();
 
-// ── CF AI Gateway config ────────────────────────────────────
-const CF_ACCOUNT_ID = "6ceba245c301bc15f3bea5653778b760";
-const CF_GATEWAY_NAME = "aicr";
+// ── CF AI Gateway via binding (pre-authenticated, no token needed) ──
+const GATEWAY_ID = "aicr";
 const BYOK_ALIAS = "anthro-01";
 const MODEL = "claude-haiku-4-5-20251001";
 
-function gatewayUrl(): string {
-  return `https://gateway.ai.cloudflare.com/v1/${CF_ACCOUNT_ID}/${CF_GATEWAY_NAME}/anthropic/v1/messages`;
-}
-
-function gatewayHeaders(aigToken: string): Record<string, string> {
-  return {
-    "content-type": "application/json",
-    "cf-aig-authorization": `Bearer ${aigToken}`,
-    "cf-aig-byok-alias": BYOK_ALIAS,
-    "anthropic-version": "2023-06-01",
-  };
-}
-
 async function callClaude(
-  aigToken: string,
+  ai: Ai,
   system: string,
   userPrompt: string,
   maxTokens = 512,
 ): Promise<string> {
-  const resp = await fetch(gatewayUrl(), {
-    method: "POST",
-    headers: gatewayHeaders(aigToken),
-    body: JSON.stringify({
-      model: MODEL,
-      max_tokens: maxTokens,
-      system,
-      messages: [{ role: "user", content: userPrompt }],
-    }),
-  });
+  const gateway = ai.gateway(GATEWAY_ID);
+  const resp = await gateway.run(
+    {
+      provider: "anthropic",
+      endpoint: "v1/messages",
+      headers: {
+        "cf-aig-byok-alias": BYOK_ALIAS,
+      },
+      query: {
+        model: MODEL,
+        max_tokens: maxTokens,
+        system,
+        messages: [{ role: "user", content: userPrompt }],
+      },
+    },
+    {
+      extraHeaders: {
+        "anthropic-version": "2023-06-01",
+      },
+    },
+  );
 
   if (!resp.ok) {
     const errText = await resp.text();
@@ -104,11 +101,6 @@ Always respond with valid JSON matching this schema:
 }`;
 
 app.post("/analyze", async (c) => {
-  const aigToken = c.env.CF_AIG_TOKEN;
-  if (!aigToken) {
-    return c.json({ ok: false, error: "CF_AIG_TOKEN not configured" }, 500);
-  }
-
   const body = await c.req.json<AnalyzeRequest>();
 
   const priceContext = body.recent_prices
@@ -146,7 +138,7 @@ ${newsContext}
 Provide your conviction analysis as JSON.`;
 
   try {
-    const text = await callClaude(aigToken, SYSTEM_PROMPT, userPrompt);
+    const text = await callClaude(c.env.AI, SYSTEM_PROMPT, userPrompt);
     const jsonMatch = text.match(/\{[\s\S]*\}/);
     if (!jsonMatch) {
       return c.json({ ok: false, error: "Failed to parse AI response", raw: text }, 500);
@@ -197,11 +189,6 @@ Always respond with valid JSON:
 }`;
 
 app.post("/review-trade", async (c) => {
-  const aigToken = c.env.CF_AIG_TOKEN;
-  if (!aigToken) {
-    return c.json({ ok: false, error: "CF_AIG_TOKEN not configured" }, 500);
-  }
-
   const body = await c.req.json<ReviewTradeRequest>();
 
   const userPrompt = `Review this completed trade:
@@ -226,7 +213,7 @@ Failure Tags: ${body.failure_tags.length > 0 ? body.failure_tags.join(", ") : "N
 Provide your coaching review as JSON.`;
 
   try {
-    const text = await callClaude(aigToken, REVIEW_SYSTEM_PROMPT, userPrompt);
+    const text = await callClaude(c.env.AI, REVIEW_SYSTEM_PROMPT, userPrompt);
     const jsonMatch = text.match(/\{[\s\S]*\}/);
     if (!jsonMatch) {
       return c.json({ ok: false, error: "Failed to parse AI review", raw: text }, 500);
