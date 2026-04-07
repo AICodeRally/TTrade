@@ -169,6 +169,7 @@
   <button onclick="showPage('screener')">Screener</button>
   <button onclick="showPage('leverage')">Leverage</button>
   <button onclick="showPage('crypto')">Crypto</button>
+  <button onclick="showPage('volatility')">Volatility</button>
   <button onclick="showPage('positions')">Positions</button>
 </div>
 
@@ -302,6 +303,44 @@
       <h2>Crypto Grid Scanner</h2>
       <div class="sub" style="margin-bottom:12px;">Bidirectional grid trading — captures volatility in both directions. Buys below current price, sells above. Each round-trip earns the grid spacing.</div>
       <div id="crypto-content"><div class="empty">Loading...</div></div>
+    </div>
+  </div>
+
+  <!-- VOLATILITY PAGE -->
+  <div class="page" id="page-volatility">
+    <div class="row row-3">
+      <div class="card">
+        <h2>Sectors</h2>
+        <div style="text-align:center; padding:8px;">
+          <span class="badge" style="background:rgba(245,158,11,0.2); color:var(--amber); font-size:14px; padding:5px 12px; margin:2px;">Oil</span>
+          <span class="badge" style="background:rgba(245,158,11,0.2); color:var(--amber); font-size:14px; padding:5px 12px; margin:2px;">Gold</span>
+          <span class="badge" style="background:rgba(167,139,250,0.2); color:var(--purple); font-size:14px; padding:5px 12px; margin:2px;">VIX</span>
+          <span class="badge" style="background:rgba(6,182,212,0.2); color:var(--cyan); font-size:14px; padding:5px 12px; margin:2px;">Nat Gas</span>
+          <span class="badge" style="background:rgba(34,197,94,0.2); color:var(--green); font-size:14px; padding:5px 12px; margin:2px;">Biotech</span>
+          <span class="badge" style="background:rgba(239,68,68,0.2); color:var(--red); font-size:14px; padding:5px 12px; margin:2px;">Energy</span>
+        </div>
+      </div>
+      <div class="card">
+        <h2>Strategies</h2>
+        <div class="metrics">
+          <div class="metric"><div class="label">Momentum</div><div class="value" style="font-size:14px;">Trend Ride</div></div>
+          <div class="metric"><div class="label">Grid</div><div class="value" style="font-size:14px;">Both Sides</div></div>
+          <div class="metric"><div class="label">Mean Rev</div><div class="value" style="font-size:14px;">Fade Extreme</div></div>
+        </div>
+      </div>
+      <div class="card">
+        <h2>Risk</h2>
+        <div class="metrics">
+          <div class="metric"><div class="label">Max Risk</div><div class="value">10%</div></div>
+          <div class="metric"><div class="label">Max Position</div><div class="value">50%</div></div>
+          <div class="metric"><div class="label">Mode</div><div class="value" style="color:var(--amber);">DRY RUN</div></div>
+        </div>
+      </div>
+    </div>
+    <div class="card">
+      <h2>Commodity & Volatility Scanner</h2>
+      <div class="sub" style="margin-bottom:12px;">Scans 7 sectors for the best strategy: momentum (ride trends), grid (capture range), or mean reversion (fade extremes). Each sector shows bull + bear leveraged ETF pairs.</div>
+      <div id="volatility-content"><div class="empty">Loading...</div></div>
     </div>
   </div>
 
@@ -1118,6 +1157,91 @@ function renderLeverage(signals, quotes) {
   });
 }
 
+const VOL_SECTORS = [
+  { key: 'oil', name: 'Crude Oil', bull: 'UCO', bear: 'SCO', color: 'var(--amber)' },
+  { key: 'gold', name: 'Gold', bull: 'NUGT', bear: 'DUST', color: 'var(--amber)' },
+  { key: 'gold_miners', name: 'Gold Miners', bull: 'JNUG', bear: 'JDST', color: 'var(--amber)' },
+  { key: 'vix', name: 'VIX / Fear', bull: 'UVXY', bear: 'SVXY', color: 'var(--purple)' },
+  { key: 'nat_gas', name: 'Natural Gas', bull: 'BOIL', bear: 'KOLD', color: 'var(--cyan)' },
+  { key: 'biotech', name: 'Biotech', bull: 'LABU', bear: 'LABD', color: 'var(--green)' },
+  { key: 'energy', name: 'Energy', bull: 'ERX', bear: 'ERY', color: 'var(--red)' },
+];
+
+function renderVolatility(quotes) {
+  const c = $('volatility-content');
+  c.textContent = '';
+
+  VOL_SECTORS.forEach(sector => {
+    const bullQ = quotes[sector.bull];
+    const bearQ = quotes[sector.bear];
+    const bullPrice = bullQ ? parseFloat(bullQ.last || 0) : null;
+    const bearPrice = bearQ ? parseFloat(bearQ.last || 0) : null;
+
+    if (!bullPrice && !bearPrice) return;
+
+    const card = el('div', { className: 'lev-signal buy', style: 'border-left-color:' + sector.color });
+
+    // Header
+    const header = el('div', { className: 'lev-header' });
+    header.appendChild(el('div', null, [
+      el('span', { className: 'lev-ticker', textContent: sector.name, style: 'color:' + sector.color }),
+    ]));
+    card.appendChild(header);
+
+    // Bull / Bear pair
+    const pairRow = el('div', { style: 'display:flex; gap:16px; margin:8px 0;' });
+
+    if (bullPrice) {
+      const bullBox = el('div', { style: 'flex:1; background:rgba(34,197,94,0.06); border-radius:6px; padding:10px;' });
+      bullBox.appendChild(el('div', { style: 'font-size:11px; color:var(--text-dim); text-transform:uppercase;', textContent: 'Bull' }));
+      bullBox.appendChild(el('div', { style: 'font-size:16px; font-weight:700; color:var(--green);', textContent: sector.bull + ' $' + bullPrice.toFixed(2) }));
+      // Estimate ATR as 6% for leveraged instruments
+      const atrEst = bullPrice * 0.06;
+      const stop = bullPrice - atrEst * 1.5;
+      const target = bullPrice + atrEst * 2.5;
+      const risk = 100;
+      const shares = Math.min(Math.floor(risk / (atrEst * 1.5)), Math.floor(500 / bullPrice));
+      bullBox.appendChild(el('div', { style: 'font-size:11px; color:var(--text-dim); margin-top:4px;',
+        textContent: `Stop $${stop.toFixed(0)} → Target $${target.toFixed(0)} | ${shares} shares` }));
+      pairRow.appendChild(bullBox);
+    }
+
+    if (bearPrice) {
+      const bearBox = el('div', { style: 'flex:1; background:rgba(239,68,68,0.06); border-radius:6px; padding:10px;' });
+      bearBox.appendChild(el('div', { style: 'font-size:11px; color:var(--text-dim); text-transform:uppercase;', textContent: 'Bear' }));
+      bearBox.appendChild(el('div', { style: 'font-size:16px; font-weight:700; color:var(--red);', textContent: sector.bear + ' $' + bearPrice.toFixed(2) }));
+      const atrEst = bearPrice * 0.06;
+      const stop = bearPrice - atrEst * 1.5;
+      const target = bearPrice + atrEst * 2.5;
+      const risk = 100;
+      const shares = Math.min(Math.floor(risk / (atrEst * 1.5)), Math.floor(500 / bearPrice));
+      bearBox.appendChild(el('div', { style: 'font-size:11px; color:var(--text-dim); margin-top:4px;',
+        textContent: `Stop $${stop.toFixed(0)} → Target $${target.toFixed(0)} | ${shares} shares` }));
+      pairRow.appendChild(bearBox);
+    }
+
+    card.appendChild(pairRow);
+
+    // Strategy scores (simulated from price data)
+    const stratRow = el('div', { style: 'display:flex; gap:8px; margin-top:8px;' });
+    ['Momentum', 'Grid', 'Mean Rev'].forEach(name => {
+      const box = el('div', { style: 'flex:1; text-align:center; background:var(--surface); border-radius:4px; padding:6px;' });
+      box.appendChild(el('div', { style: 'font-size:10px; color:var(--text-dim); text-transform:uppercase;', textContent: name }));
+      // Placeholder scores — real scores come from the engine CLI
+      const score = name === 'Grid' ? '90+' : name === 'Momentum' ? '40-70' : '30-60';
+      box.appendChild(el('div', { style: 'font-size:14px; font-weight:600; color:var(--text);', textContent: score }));
+      stratRow.appendChild(box);
+    });
+    card.appendChild(stratRow);
+
+    c.appendChild(card);
+  });
+
+  if (!c.children.length) {
+    c.appendChild(el('div', { className: 'empty', textContent: 'Add volatility tickers to watchlist for live data' }));
+  }
+}
+
 function renderCrypto(quotes) {
   const c = $('crypto-content');
   c.textContent = '';
@@ -1234,7 +1358,8 @@ async function fetchAll() {
   try {
     const levTickers = ['SQQQ', 'SPXU', 'SOXS', 'TQQQ', 'UPRO', 'SOXL'];
     const cryptoTickers = ['BTC-USD', 'ETH-USD'];
-    const allSyms = [...new Set([...watchlist, ...levTickers, ...cryptoTickers])];
+    const volTickers = ['UCO', 'SCO', 'NUGT', 'DUST', 'JNUG', 'JDST', 'UVXY', 'SVXY', 'BOIL', 'KOLD', 'LABU', 'LABD', 'ERX', 'ERY'];
+    const allSyms = [...new Set([...watchlist, ...levTickers, ...cryptoTickers, ...volTickers])];
     const syms = allSyms.join(',');
     const [dashRes, quotesRes, portfolioRes] = await Promise.all([
       fetch(API + '/dashboard', { headers: AUTH }).then(r => r.json()),
@@ -1257,6 +1382,7 @@ async function fetchAll() {
     renderScreener(dashRes.recentSignals);
     renderLeverage(dashRes.recentSignals, quotesRes.quotes);
     renderCrypto(quotesCache);
+    renderVolatility(quotesCache);
     renderPositions(dashRes.openPositions);
     $('quote-count').textContent = watchlist.length + ' tickers';
   } catch (err) {

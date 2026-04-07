@@ -470,6 +470,89 @@ def crypto(account: float):
         click.echo("")
 
 
+@cli.command(name="vol")
+@click.option("--account", default=1000.0, help="Account value for position sizing")
+@click.option("--sector", default=None, help="Specific sector (oil, gold, gold_miners, nat_gas, vix, biotech, energy)")
+def volatility_scan(account: float, sector: str | None):
+    """Scan commodities & volatility instruments (oil, gold, VIX, etc.)."""
+    from engine.volatility import scan_volatility
+
+    logging.basicConfig(level=logging.WARNING)
+    config = TTRadeConfig()
+
+    sectors = [sector] if sector else None
+    click.echo("Commodity & Volatility Scanner")
+    click.echo(f"Account: ${account:,.0f}")
+    click.echo("=" * 65)
+    click.echo("")
+
+    signals = scan_volatility(config, account_value=account, sectors=sectors)
+
+    if not signals:
+        click.echo("No signals available.")
+        return
+
+    for s in signals:
+        best = s.best_strategy
+        icon = {"trade": ">>>", "watch": "...", "avoid": "  x"}[best.action]
+        click.echo(f"{icon} {s.sector_name.upper()} — Score: {s.score:.0f}/100")
+        click.echo(f"    Bull: {s.bull_ticker} ${s.bull_price:.2f}  |  Bear: {s.bear_ticker} ${s.bear_price:.2f}")
+        if s.underlying_price > 0:
+            click.echo(f"    Underlying: {s.underlying_ticker} ${s.underlying_price:.2f}")
+        click.echo(f"    Volatility: {s.volatility_rank} ({s.atr_pct:.1f}% ATR, {s.daily_range_pct:.1f}% daily range)")
+        click.echo(f"    Trend: {s.trend} (strength {s.trend_strength:.0f}) | RSI: {s.rsi:.0f} | SMA20: {s.sma20_dist_pct:+.1f}%")
+        click.echo("")
+
+        # Checks
+        for name, check in s.checks.items():
+            mark = "PASS" if check["passed"] else "FAIL"
+            click.echo(f"    {name:16s} {mark}  ({check['value']})")
+        click.echo("")
+
+        # All strategy scores
+        click.echo(f"    ── Strategies ──")
+        for strat in s.all_strategies:
+            star = " ★ BEST" if strat.name == best.name else ""
+            click.echo(f"    {strat.name:16s} {strat.score:3.0f}/100  {strat.action:6s}  "
+                        f"est ${strat.est_daily_pnl:.2f}/day  ${strat.est_weekly_pnl:.2f}/wk{star}")
+        click.echo("")
+
+        # Recommendation
+        click.echo(f"    ── Recommendation ──")
+        click.echo(f"    Strategy:  {best.name.upper()}")
+        click.echo(f"    Trade:     {s.recommended_ticker} ({s.recommended_side.upper()})")
+        rec_price = s.bull_price if s.recommended_side == "bull" else s.bear_price
+        click.echo(f"    Entry:     ${rec_price:.2f}")
+        click.echo(f"    Stop:      ${rec_price * (1 - s.stop_pct/100):.2f} (-{s.stop_pct:.1f}%)")
+        click.echo(f"    Target:    ${rec_price * (1 + s.target_pct/100):.2f} (+{s.target_pct:.1f}%)")
+        click.echo(f"    Shares:    {s.shares}")
+        click.echo(f"    Size:      ${s.position_size:.0f} ({s.position_size/account*100:.0f}% of account)")
+        click.echo(f"    Win P&L:   +${s.est_win_dollars:.0f} ({s.est_win_dollars/account*100:+.0f}%)")
+        click.echo(f"    Loss P&L:  -${s.est_loss_dollars:.0f} ({s.est_loss_dollars/account*100:-.0f}%)")
+
+        # Strategy-specific params
+        if best.name == "grid":
+            p = best.params
+            click.echo(f"    Grid:      {p['spacing_pct']:.1f}% spacing, {p['num_levels']} levels, ${p['per_level']:.0f}/level")
+            click.echo(f"               ~{p['est_trips_day']:.1f} trips/day, ${p['profit_per_trip']:.2f}/trip")
+
+        if best.name == "mean_reversion":
+            p = best.params
+            click.echo(f"    Revert to: {p['reversion_target']} ({p['extension']} extension)")
+
+        # News
+        if s.news_headlines:
+            click.echo(f"    ── News ({len(s.news_headlines)} headlines) ──")
+            for h in s.news_headlines[:4]:
+                click.echo(f"      - {h[:78]}")
+
+        click.echo("")
+        click.echo(f"    ⚠  DRY RUN — no orders placed")
+        click.echo("")
+        click.echo("=" * 65)
+        click.echo("")
+
+
 @cli.command(name="grid")
 @click.option("--account", default=1000.0, help="Account value for position sizing")
 @click.option("--ticker", default=None, help="Specific crypto (BTC-USD or ETH-USD)")
