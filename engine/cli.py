@@ -408,6 +408,69 @@ def screen(top: int):
 
 
 @cli.command()
+@click.option("--account", default=1000.0, help="Account value for position sizing")
+def crypto(account: float):
+    """Scan crypto (BTC/ETH) for grid trading opportunities."""
+    from engine.crypto import scan_crypto
+
+    logging.basicConfig(level=logging.WARNING)
+    config = TTRadeConfig()
+
+    click.echo(f"Scanning crypto for grid trading opportunities...")
+    click.echo(f"Account: ${account:,.0f}")
+    click.echo("")
+
+    signals = scan_crypto(config, account_value=account)
+
+    if not signals:
+        click.echo("No crypto data available.")
+        return
+
+    for s in signals:
+        icon = {"trade": ">>> TRADE", "watch": "... WATCH", "avoid": "  x AVOID"}[s.action]
+        click.echo(f"{icon}  {s.name} ({s.ticker}) @ ${s.price:,.2f}")
+        click.echo(f"         Score: {s.score:.0f}/100 | Trend: {s.trend} | Volatility: {s.volatility}")
+        click.echo("")
+
+        for name, check in s.checks.items():
+            mark = "PASS" if check["passed"] else "FAIL"
+            click.echo(f"         {name:20s} {mark}  ({check['value']})")
+
+        click.echo("")
+        click.echo(f"         ── Grid Setup ──")
+        click.echo(f"         Spacing:     {s.grid_spacing_pct:.1f}%")
+        click.echo(f"         Buy levels:  {s.buy_levels} below ${s.price:,.0f}")
+        click.echo(f"         Sell levels: {s.sell_levels} above ${s.price:,.0f}")
+        click.echo(f"         Per level:   ${s.position_size:.0f}")
+        click.echo(f"         Capital:     ${s.total_capital_needed:.0f} ({s.total_capital_needed/account*100:.0f}% of account)")
+
+        click.echo("")
+        click.echo(f"         ── Grid Levels ──")
+        for level in s.grid_levels:
+            side_icon = "BUY " if level.side == "buy" else "SELL"
+            marker = " <<<" if abs(level.price - s.price) / s.price < s.grid_spacing_pct / 100 else ""
+            click.echo(f"           {side_icon} @ ${level.price:>10,.2f}  -> exit @ ${level.paired_level:>10,.2f}{marker}")
+
+        click.echo("")
+        click.echo(f"         ── Profit Estimate ──")
+        click.echo(f"         Per round trip: ${s.profit_per_round_trip:.2f}")
+        click.echo(f"         Est. daily trips: {s.est_daily_trips:.1f}")
+        click.echo(f"         Est. daily profit: ${s.est_daily_profit:.2f} ({s.est_daily_profit/account*100:.1f}% of account)")
+        click.echo(f"         Est. weekly profit: ${s.est_weekly_profit:.2f} ({s.est_weekly_profit/account*100:.1f}% of account)")
+
+        if s.est_weekly_profit > 0:
+            weeks_to_double = account / s.est_weekly_profit
+            click.echo(f"         Time to double: ~{weeks_to_double:.0f} weeks")
+
+        if s.news_headlines:
+            click.echo(f"         ── News ({len(s.news_headlines)} headlines) ──")
+            for h in s.news_headlines[:5]:
+                click.echo(f"           - {h[:80]}")
+
+        click.echo("")
+
+
+@cli.command()
 @click.option("--paper", is_flag=True, help="Run in paper trading mode")
 def run(paper: bool):
     """Start the trading engine."""

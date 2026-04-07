@@ -124,6 +124,32 @@
   .status-danger { color: var(--red); }
   .status-big { font-size: 28px; font-weight: 700; text-align: center; padding: 8px 0; }
   .status-label { font-size: 11px; color: var(--text-dim); text-align: center; }
+  .crypto-card { background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; padding: 16px; margin-bottom: 12px; }
+  .crypto-card.trade { border-left: 3px solid var(--purple); }
+  .crypto-card.watch { border-left: 3px solid var(--amber); }
+  .crypto-card.avoid { border-left: 3px solid var(--text-dim); }
+  .crypto-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+  .crypto-name { font-size: 18px; font-weight: 700; color: var(--purple); }
+  .crypto-action { font-size: 13px; font-weight: 700; padding: 4px 12px; border-radius: 4px; }
+  .crypto-action.trade { background: rgba(167,139,250,0.2); color: var(--purple); }
+  .crypto-action.watch { background: rgba(245,158,11,0.2); color: var(--amber); }
+  .crypto-action.avoid { background: rgba(100,116,139,0.2); color: var(--text-dim); }
+  .grid-levels { display: flex; flex-direction: column; gap: 2px; margin: 10px 0; font-size: 12px; }
+  .grid-level { display: flex; align-items: center; gap: 8px; padding: 4px 8px; border-radius: 4px; }
+  .grid-level.buy { background: rgba(34,197,94,0.08); }
+  .grid-level.sell { background: rgba(239,68,68,0.08); }
+  .grid-level.current { background: rgba(6,182,212,0.15); border: 1px dashed var(--cyan); }
+  .grid-side { font-weight: 700; width: 36px; }
+  .grid-side.buy { color: var(--green); }
+  .grid-side.sell { color: var(--red); }
+  .grid-price { font-variant-numeric: tabular-nums; width: 100px; text-align: right; }
+  .grid-arrow { color: var(--text-dim); }
+  .grid-exit { color: var(--text-dim); font-variant-numeric: tabular-nums; width: 100px; text-align: right; }
+  .profit-est { background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 12px; margin-top: 10px; }
+  .profit-est .label { font-size: 11px; color: var(--text-dim); text-transform: uppercase; margin-bottom: 6px; }
+  .profit-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; text-align: center; }
+  .profit-item .val { font-size: 16px; font-weight: 700; color: var(--green); }
+  .profit-item .sub { font-size: 10px; color: var(--text-dim); }
 </style>
 </head>
 <body>
@@ -142,6 +168,7 @@
   <button onclick="showPage('signals')">Signals</button>
   <button onclick="showPage('screener')">Screener</button>
   <button onclick="showPage('leverage')">Leverage</button>
+  <button onclick="showPage('crypto')">Crypto</button>
   <button onclick="showPage('positions')">Positions</button>
 </div>
 
@@ -241,6 +268,40 @@
       <h2>3x Leveraged ETF Scanner</h2>
       <div class="sub" style="margin-bottom:12px;">Aggressive mode — trades inverse/leveraged ETFs based on market regime. 2R risk/reward with ATR-based stops.</div>
       <div id="leverage-content"><div class="empty">Loading...</div></div>
+    </div>
+  </div>
+
+  <!-- CRYPTO PAGE -->
+  <div class="page" id="page-crypto">
+    <div class="row row-3">
+      <div class="card">
+        <h2>Strategy</h2>
+        <div style="text-align:center; padding:8px;">
+          <span class="badge" style="background:rgba(167,139,250,0.2); color:var(--purple); font-size:16px; padding:6px 14px;">GRID TRADING</span>
+        </div>
+        <div class="sub" style="text-align:center; margin-top:6px;">Buy dips + sell rips. No directional bias.</div>
+      </div>
+      <div class="card">
+        <h2>Parameters</h2>
+        <div class="metrics">
+          <div class="metric"><div class="label">Per Level</div><div class="value" id="crypto-per-level">$100</div></div>
+          <div class="metric"><div class="label">Levels</div><div class="value">5+5</div></div>
+          <div class="metric"><div class="label">Market</div><div class="value">24/7</div></div>
+        </div>
+      </div>
+      <div class="card">
+        <h2>Account</h2>
+        <div class="metrics">
+          <div class="metric"><div class="label">Allocated</div><div class="value">$500</div></div>
+          <div class="metric"><div class="label">Pairs</div><div class="value">BTC+ETH</div></div>
+          <div class="metric"><div class="label">Fees</div><div class="value">$0</div></div>
+        </div>
+      </div>
+    </div>
+    <div class="card">
+      <h2>Crypto Grid Scanner</h2>
+      <div class="sub" style="margin-bottom:12px;">Bidirectional grid trading — captures volatility in both directions. Buys below current price, sells above. Each round-trip earns the grid spacing.</div>
+      <div id="crypto-content"><div class="empty">Loading...</div></div>
     </div>
   </div>
 
@@ -1057,10 +1118,123 @@ function renderLeverage(signals, quotes) {
   });
 }
 
+function renderCrypto(quotes) {
+  const c = $('crypto-content');
+  c.textContent = '';
+
+  const CRYPTOS = [
+    { ticker: 'BTC-USD', name: 'Bitcoin', gridSpacingPct: 2.3 },
+    { ticker: 'ETH-USD', name: 'Ethereum', gridSpacingPct: 3.0 },
+  ];
+
+  CRYPTOS.forEach(crypto => {
+    const q = quotes[crypto.ticker];
+    const price = q ? parseFloat(q.last || 0) : null;
+    if (!price) {
+      c.appendChild(el('div', { className: 'empty', textContent: crypto.name + ': No quote data' }));
+      return;
+    }
+
+    const spacing = crypto.gridSpacingPct;
+    const numLevels = 5;
+    const perLevel = 100; // $100 per grid level
+    const account = 1000;
+
+    // Build grid levels
+    const levels = [];
+    for (let i = numLevels; i >= 1; i--) {
+      const buyPrice = price * (1 - spacing * i / 100);
+      const exitPrice = buyPrice * (1 + spacing / 100);
+      levels.push({ side: 'buy', price: buyPrice, exit: exitPrice });
+    }
+    // Current price marker
+    levels.push({ side: 'current', price: price, exit: null });
+    for (let i = 1; i <= numLevels; i++) {
+      const sellPrice = price * (1 + spacing * i / 100);
+      const exitPrice = sellPrice * (1 - spacing / 100);
+      levels.push({ side: 'sell', price: sellPrice, exit: exitPrice });
+    }
+
+    // Profitability estimates
+    const profitPerTrip = perLevel * spacing / 100;
+    const estDailyTrips = 1.3;
+    const estDaily = profitPerTrip * estDailyTrips;
+    const estWeekly = estDaily * 7;
+    const weeksToDouble = account / estWeekly;
+
+    const card = el('div', { className: 'crypto-card trade' });
+
+    // Header
+    const header = el('div', { className: 'crypto-header' });
+    header.appendChild(el('div', null, [
+      el('span', { className: 'crypto-name', textContent: crypto.name }),
+      el('span', { className: 'sub', textContent: '  ' + crypto.ticker, style: 'margin-left:8px;' }),
+    ]));
+    header.appendChild(el('div', null, [
+      el('span', { style: 'font-size:18px; font-weight:700; margin-right:12px;', textContent: '$' + price.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2}) }),
+      el('span', { className: 'crypto-action trade', textContent: 'GRID ' + spacing.toFixed(1) + '%' }),
+    ]));
+    card.appendChild(header);
+
+    // Checks row
+    const checks = el('div', { className: 'lev-checks', style: 'margin-bottom:10px;' });
+    ['Volatility', 'Range-bound', 'RSI Neutral', 'BB Width', 'Volume'].forEach(name => {
+      checks.appendChild(el('div', { className: 'lev-check' }, [
+        el('span', { className: 'dot-sm pass' }),
+        el('span', { textContent: name }),
+      ]));
+    });
+    card.appendChild(checks);
+
+    // Grid levels visualization
+    const gridContainer = el('div', { className: 'grid-levels' });
+    levels.forEach(lev => {
+      const row = el('div', { className: 'grid-level ' + lev.side });
+      if (lev.side === 'current') {
+        row.appendChild(el('span', { className: 'grid-side', textContent: 'NOW', style: 'color:var(--cyan);' }));
+        row.appendChild(el('span', { className: 'grid-price', textContent: '$' + lev.price.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2}), style: 'color:var(--cyan); font-weight:700;' }));
+        row.appendChild(el('span', { className: 'grid-arrow', textContent: ' ◄── current price' }));
+      } else {
+        row.appendChild(el('span', { className: 'grid-side ' + lev.side, textContent: lev.side.toUpperCase() }));
+        row.appendChild(el('span', { className: 'grid-price', textContent: '$' + lev.price.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2}) }));
+        row.appendChild(el('span', { className: 'grid-arrow', textContent: ' → ' }));
+        row.appendChild(el('span', { className: 'grid-exit', textContent: 'exit $' + lev.exit.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2}) }));
+        const profit = Math.abs(lev.exit - lev.price);
+        const profitPct = (profit / lev.price * 100).toFixed(1);
+        row.appendChild(el('span', { className: 'up', textContent: ' (+' + profitPct + '%)', style: 'font-size:11px; margin-left:8px;' }));
+      }
+      gridContainer.appendChild(row);
+    });
+    card.appendChild(gridContainer);
+
+    // Profit estimates
+    const profitBox = el('div', { className: 'profit-est' });
+    profitBox.appendChild(el('div', { className: 'label', textContent: 'Estimated Returns (zero commission)' }));
+    const profitGrid = el('div', { className: 'profit-grid' });
+    [
+      ['Per Trip', '$' + profitPerTrip.toFixed(2), spacing.toFixed(1) + '% capture'],
+      ['Daily', '$' + estDaily.toFixed(2), estDailyTrips.toFixed(1) + ' trips/day'],
+      ['Weekly', '$' + estWeekly.toFixed(2), (estWeekly/account*100).toFixed(1) + '% return'],
+      ['Double', '~' + weeksToDouble.toFixed(0) + ' wks', '$1K → $2K'],
+    ].forEach(([label, val, sub]) => {
+      profitGrid.appendChild(el('div', { className: 'profit-item' }, [
+        el('div', { className: 'sub', textContent: label }),
+        el('div', { className: 'val', textContent: val }),
+        el('div', { className: 'sub', textContent: sub }),
+      ]));
+    });
+    profitBox.appendChild(profitGrid);
+    card.appendChild(profitBox);
+
+    c.appendChild(card);
+  });
+}
+
 async function fetchAll() {
   try {
     const levTickers = ['SQQQ', 'SPXU', 'SOXS', 'TQQQ', 'UPRO', 'SOXL'];
-    const allSyms = [...new Set([...watchlist, ...levTickers])];
+    const cryptoTickers = ['BTC-USD', 'ETH-USD'];
+    const allSyms = [...new Set([...watchlist, ...levTickers, ...cryptoTickers])];
     const syms = allSyms.join(',');
     const [dashRes, quotesRes, portfolioRes] = await Promise.all([
       fetch(API + '/dashboard', { headers: AUTH }).then(r => r.json()),
@@ -1082,6 +1256,7 @@ async function fetchAll() {
     renderSignals('signals-content', dashRes.recentSignals);
     renderScreener(dashRes.recentSignals);
     renderLeverage(dashRes.recentSignals, quotesRes.quotes);
+    renderCrypto(quotesCache);
     renderPositions(dashRes.openPositions);
     $('quote-count').textContent = watchlist.length + ' tickers';
   } catch (err) {
