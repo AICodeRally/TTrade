@@ -9,8 +9,31 @@ class TTRadeConfig:
     # Strategy version
     strategy_version: str = "1.1.0"
 
-    # Universe
-    tickers: tuple[str, ...] = ("SPY", "QQQ", "AAPL", "MSFT", "NVDA", "VCX", "RKLB")
+    # Universe — core watchlist (scanned every cycle)
+    tickers: tuple[str, ...] = (
+        # Benchmark ETFs
+        "SPY", "QQQ", "IWM", "DIA",
+        # Sector ETFs
+        "XLF", "XLE", "XLK", "GLD",
+        # Mega-cap (liquid options, affordable spreads)
+        "AAPL", "MSFT", "NVDA", "AMD", "META", "GOOG", "AMZN", "TSLA",
+        # Speculative / high-beta
+        "RKLB", "VCX",
+    )
+
+    # Screener universe — broader scan for discovery (on-demand via `ttrade screen`)
+    screen_universe: tuple[str, ...] = (
+        "SPY", "QQQ", "IWM", "DIA",
+        "XLF", "XLE", "XLK", "XLV", "XLI", "XLP", "XLU", "XLY", "XLC", "GLD", "TLT", "EEM",
+        "AAPL", "MSFT", "NVDA", "AMD", "META", "GOOG", "AMZN", "TSLA",
+        "JPM", "BAC", "GS", "MA", "V",
+        "UNH", "JNJ", "LLY", "PFE", "ABBV",
+        "XOM", "CVX", "COP",
+        "BA", "CAT", "DE", "GE",
+        "NFLX", "DIS", "CRM", "ORCL", "ADBE",
+        "COST", "WMT", "HD", "MCD",
+        "RKLB", "VCX", "COIN", "PLTR", "SOFI", "HOOD",
+    )
 
     # Account
     account_value: float = 1000.0
@@ -69,7 +92,7 @@ class TTRadeConfig:
     vix_max_entry: float = 30.0     # Block entries above VIX 30
 
     # Speculative trade rules
-    speculative_tickers: tuple[str, ...] = ("NVDA", "RKLB")
+    speculative_tickers: tuple[str, ...] = ("NVDA", "RKLB", "TSLA", "VCX", "COIN", "PLTR", "SOFI", "HOOD")
     max_speculative_positions: int = 1  # Never overlap 2 speculative trades
 
     # Scoring

@@ -261,6 +261,86 @@ def sync():
 
 
 @cli.command()
+@click.option("--top", default=10, help="Show top N candidates")
+def screen(top: int):
+    """Screen broad universe for promising setups."""
+    from engine.market_data import get_daily_bars
+    from engine.market_state import evaluate_market_state
+    from engine.gates.regime import check_regime
+    from engine.gates.alignment import check_alignment
+    from engine.gates.pullback import check_pullback
+    from engine.gates.confirmation import check_confirmation
+    from engine.pipeline import determine_direction
+
+    logging.basicConfig(level=logging.WARNING)
+    config = TTRadeConfig()
+
+    click.echo(f"Screening {len(config.screen_universe)} tickers...")
+    try:
+        spy_bars = get_daily_bars("SPY", period_days=60)
+    except Exception as e:
+        click.echo(f"Failed to fetch SPY: {e}", err=True)
+        raise SystemExit(1)
+
+    market_state = evaluate_market_state(spy_bars, config)
+    direction = determine_direction(market_state.state)
+    click.echo(f"Market: {market_state.state.value} (slope={market_state.slope:.2f}, SPY=${market_state.current_price:.2f})")
+    click.echo(f"Direction: {direction or 'NONE (CHOP)'}")
+    click.echo("")
+
+    if direction is None:
+        click.echo("CHOP regime — no directional setups to screen.")
+        return
+
+    results = []
+    for ticker in config.screen_universe:
+        try:
+            bars = spy_bars if ticker == "SPY" else get_daily_bars(ticker, period_days=60)
+        except Exception:
+            continue
+
+        gates_passed = 0
+        gate_detail = []
+
+        g1 = check_regime(market_state, config)
+        if g1.passed:
+            gates_passed += 1
+            gate_detail.append("regime")
+
+            g2 = check_alignment(bars, market_state, config)
+            if g2.passed:
+                gates_passed += 1
+                gate_detail.append("align")
+
+                g3 = check_pullback(bars, direction, config)
+                if g3.passed:
+                    gates_passed += 1
+                    gate_detail.append("pullback")
+
+                    g4 = check_confirmation(bars, direction, config)
+                    if g4.passed:
+                        gates_passed += 1
+                        gate_detail.append("confirm")
+
+        close = float(bars["Close"].iloc[-1])
+        results.append((ticker, gates_passed, gate_detail, close))
+
+    results.sort(key=lambda x: (-x[1], x[0]))
+    click.echo(f"{'TICKER':6s} {'GATES':5s} {'PRICE':>8s}  PASSED")
+    click.echo("-" * 45)
+    for ticker, passed, detail, price in results[:top]:
+        bar = "█" * passed + "░" * (4 - passed)
+        click.echo(f"{ticker:6s} {bar}  ${price:>7.2f}  {', '.join(detail)}")
+
+    # Summary
+    by_count = {}
+    for _, passed, _, _ in results:
+        by_count[passed] = by_count.get(passed, 0) + 1
+    click.echo("")
+    click.echo(f"Total: {len(results)} screened | " + " | ".join(f"{k}/4: {v}" for k, v in sorted(by_count.items(), reverse=True)))
+
+
+@cli.command()
 @click.option("--paper", is_flag=True, help="Run in paper trading mode")
 def run(paper: bool):
     """Start the trading engine."""
