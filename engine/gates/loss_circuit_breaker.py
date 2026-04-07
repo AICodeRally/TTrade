@@ -14,14 +14,15 @@ ET = ZoneInfo("America/New_York")
 def check_loss_circuit_breaker(session: Session, config: TTRadeConfig) -> GateResult:
     """Block all entries if daily or weekly loss limit exceeded."""
     now = datetime.now(ET)
-    today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    # Use naive datetimes for SQLite compatibility
+    today_start = now.replace(hour=0, minute=0, second=0, microsecond=0, tzinfo=None)
     week_start = today_start - timedelta(days=now.weekday())  # Monday
 
     # Get all closed positions from this week
     closed = list(session.exec(
         select(PositionRecord).where(
             PositionRecord.status == "closed",
-            PositionRecord.closed_at >= week_start.isoformat(),
+            PositionRecord.closed_at >= week_start.strftime("%Y-%m-%d %H:%M:%S"),
         )
     ).all())
 
@@ -31,8 +32,13 @@ def check_loss_circuit_breaker(session: Session, config: TTRadeConfig) -> GateRe
     for pos in closed:
         pnl = pos.pnl_dollars or 0.0
         weekly_pnl += pnl
-        if pos.closed_at and pos.closed_at >= today_start:
-            daily_pnl += pnl
+        closed_at = pos.closed_at
+        if closed_at:
+            # Normalize to naive datetime for comparison
+            if hasattr(closed_at, 'tzinfo') and closed_at.tzinfo is not None:
+                closed_at = closed_at.replace(tzinfo=None)
+            if closed_at >= today_start:
+                daily_pnl += pnl
 
     if daily_pnl <= -config.max_daily_loss:
         logger.warning("DAILY LOSS BREAKER: $%.2f (limit -$%.2f)", daily_pnl, config.max_daily_loss)

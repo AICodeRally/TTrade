@@ -186,7 +186,43 @@ def sync():
             click.echo("No unsynced signals.")
             return
 
+        # Get sync API key
+        sync_key = os.environ.get("TTRADE_SYNC_API_KEY", "")
+        if not sync_key:
+            try:
+                import subprocess
+                result = subprocess.run(
+                    ["security", "find-generic-password", "-s", "ttrade-SYNC_API_KEY", "-w"],
+                    capture_output=True, text=True,
+                )
+                if result.returncode == 0:
+                    sync_key = result.stdout.strip()
+            except Exception:
+                pass
+        if not sync_key:
+            click.echo("No SYNC_API_KEY found — set TTRADE_SYNC_API_KEY or add to Keychain", err=True)
+            raise SystemExit(1)
+
         click.echo(f"Syncing {len(signals)} signals to {worker_url}/sync ...")
+
+        # Build gate results from stored JSON
+        import json as _json
+        all_gates = []
+        for s in signals:
+            if s.gate_results_json:
+                try:
+                    gates = _json.loads(s.gate_results_json)
+                    for g in gates:
+                        all_gates.append({
+                            "signalId": s.signal_id,
+                            "gateName": g.get("gate_name", ""),
+                            "passed": 1 if g.get("passed") else 0,
+                            "measuredValue": str(g.get("measured_value", "")),
+                            "threshold": str(g.get("threshold", "")),
+                            "configVersion": g.get("config_version", ""),
+                        })
+                except Exception:
+                    pass
 
         payload = {
             "signals": [
@@ -197,18 +233,21 @@ def sync():
                     "timestamp": s.timestamp.isoformat(),
                     "marketState": s.market_state,
                     "allGatesPassed": 1 if s.all_gates_passed else 0,
-                    "gateResultsJson": s.gate_results_json,
                     "signalScore": s.signal_score,
                     "componentScoresJson": s.component_scores_json,
                     "actionTaken": s.action_taken,
                     "strategyVersion": s.strategy_version,
                     "configHash": s.config_hash,
+                    "aiConviction": s.ai_conviction,
+                    "aiAnalysisJson": s.ai_analysis_json,
                 }
                 for s in signals
-            ]
+            ],
+            "gates": all_gates,
         }
 
-        resp = requests.post(f"{worker_url}/sync", json=payload, timeout=30)
+        resp = requests.post(f"{worker_url}/sync", json=payload,
+                             headers={"X-API-Key": sync_key}, timeout=30)
         if resp.ok:
             data = resp.json()
             click.echo(f"Synced: {data}")
