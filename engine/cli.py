@@ -308,6 +308,22 @@ def leverage_scan(account: float):
             pnl_loss = s.position_size_shares * (s.stop_price - s.price)
             click.echo(f"         Win:      +${pnl_win:.0f} ({pnl_win/account*100:+.0f}% of account)")
             click.echo(f"         Loss:     -${abs(pnl_loss):.0f} ({pnl_loss/account*100:+.0f}% of account)")
+
+        # News headlines
+        if s.news_headlines:
+            click.echo(f"         ── News ({len(s.news_headlines)} headlines) ──")
+            for h in s.news_headlines[:5]:
+                click.echo(f"           - {h[:80]}")
+
+        # AI catalyst
+        if s.ai_catalyst:
+            ai = s.ai_catalyst
+            click.echo(f"         ── AI Catalyst ──")
+            click.echo(f"           Conviction: {ai['conviction']:.0f}/100 ({ai['trade_quality']})")
+            click.echo(f"           {ai['summary']}")
+            if ai['risk_factors']:
+                click.echo(f"           Risks: {', '.join(ai['risk_factors'][:3])}")
+
         click.echo("")
 
 
