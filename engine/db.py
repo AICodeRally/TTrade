@@ -94,6 +94,25 @@ class ReviewRecord(SQLModel, table=True):
     synced: bool = False
 
 
+class GridOrderRecord(SQLModel, table=True):
+    __tablename__ = "grid_orders"
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    grid_id: str = Field(index=True)         # groups orders into a grid session
+    ticker: str
+    side: str                                 # "buy" or "sell"
+    level_price: float                        # grid level price
+    exit_price: float                         # paired exit price
+    notional_amount: float                    # $ per level
+    status: str = "pending"                   # pending, placed, filled, cancelled
+    order_id: Optional[str] = None            # broker order ID
+    fill_price: Optional[float] = None
+    filled_at: Optional[datetime] = None
+    paired_order_id: Optional[str] = None     # the exit order spawned on fill
+    pnl_dollars: Optional[float] = None
+    created_at: datetime = Field(default_factory=datetime.now)
+
+
 class CooldownRecord(SQLModel, table=True):
     __tablename__ = "cooldown_records"
 

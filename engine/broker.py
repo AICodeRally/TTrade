@@ -103,6 +103,31 @@ class BrokerClient:
     def cancel_order(self, order_id: str) -> dict:
         return self._request("DELETE", f"/trading/orders/{order_id}")
 
+    # ── Crypto endpoints (/trading/) ──
+
+    def get_crypto_quote(self, symbol: str) -> dict:
+        """Get a crypto quote (e.g., BTC-USD, ETH-USD)."""
+        return self.get_quote(symbol, instrument_type="CRYPTO")
+
+    def place_crypto_order(
+        self, symbol: str, side: str, notional_amount: float, limit_price: float,
+    ) -> dict:
+        """Place a crypto limit order (notional = dollar amount, not coin quantity)."""
+        order = {
+            "orderId": str(uuid.uuid4()),
+            "instrument": {"symbol": symbol, "type": "CRYPTO"},
+            "side": side,  # "BUY" or "SELL"
+            "type": "LIMIT",
+            "limitPrice": str(limit_price),
+            "notionalAmount": str(notional_amount),
+            "expiration": {"timeInForce": "GTC"},  # Good til cancelled for grid
+        }
+        logger.info("Placing crypto %s order: %s $%.2f at $%.2f", side, symbol, notional_amount, limit_price)
+        return self._request("POST", "/trading/orders/crypto", json=order)
+
+    def cancel_crypto_order(self, order_id: str) -> dict:
+        return self.cancel_order(order_id)
+
     def _build_order(self, legs: list[dict], limit_price: float) -> dict:
         return {
             "orderId": str(uuid.uuid4()),

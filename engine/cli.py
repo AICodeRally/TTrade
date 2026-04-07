@@ -470,6 +470,46 @@ def crypto(account: float):
         click.echo("")
 
 
+@cli.command(name="grid")
+@click.option("--account", default=1000.0, help="Account value for position sizing")
+@click.option("--ticker", default=None, help="Specific crypto (BTC-USD or ETH-USD)")
+@click.option("--save", is_flag=True, help="Save grid plan to database")
+def grid_plan(account: float, ticker: str | None, save: bool):
+    """Preview crypto grid trading orders (DRY RUN — no real trades)."""
+    from engine.crypto import scan_crypto, CRYPTO_TICKERS
+    from engine.grid_executor import plan_grid, execute_grid, format_grid_plan
+
+    logging.basicConfig(level=logging.WARNING)
+    config = TTRadeConfig()
+
+    click.echo("Crypto Grid Planner (DRY RUN)")
+    click.echo(f"Account: ${account:,.0f}")
+    click.echo("=" * 60)
+    click.echo("")
+
+    signals = scan_crypto(config, account_value=account)
+
+    if ticker:
+        signals = [s for s in signals if s.ticker == ticker]
+
+    if not signals:
+        click.echo("No crypto signals available.")
+        return
+
+    for signal in signals:
+        plan = plan_grid(signal, mode="DRY_RUN")
+        click.echo(format_grid_plan(plan))
+
+        if save:
+            db_engine = _get_db_engine()
+            result = execute_grid(plan, db_engine=db_engine)
+            click.echo(f"\n  Saved to database: {result['grid_id']}")
+
+        click.echo("")
+        click.echo("=" * 60)
+        click.echo("")
+
+
 @cli.command()
 @click.option("--paper", is_flag=True, help="Run in paper trading mode")
 def run(paper: bool):
