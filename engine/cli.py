@@ -260,6 +260,186 @@ def sync():
             click.echo(f"Sync failed: {resp.status_code} {resp.text}", err=True)
 
 
+@cli.command(name="bt")
+@click.argument("ticker")
+@click.option("--strategy", type=click.Choice(["momentum", "mean_reversion", "grid", "all"]), default="all")
+@click.option("--period", default="1y", help="Backtest period (1y, 2y, 6mo)")
+@click.option("--account", default=1000.0, help="Starting capital")
+def backtest(ticker: str, strategy: str, period: str, account: float):
+    """Backtest a strategy on historical data."""
+    from engine.backtest import backtest_momentum, backtest_mean_reversion, backtest_grid
+
+    logging.basicConfig(level=logging.WARNING)
+    click.echo(f"Backtesting {ticker} over {period} with ${account:,.0f}")
+    click.echo("=" * 65)
+
+    strategies = {
+        "momentum": backtest_momentum,
+        "mean_reversion": backtest_mean_reversion,
+        "grid": backtest_grid,
+    }
+    if strategy == "all":
+        run = list(strategies.items())
+    else:
+        run = [(strategy, strategies[strategy])]
+
+    for name, func in run:
+        click.echo(f"\n{'─'*65}")
+        click.echo(f"  {name.upper()}")
+        click.echo(f"{'─'*65}")
+        try:
+            r = func(ticker, period=period, account=account)
+        except Exception as e:
+            click.echo(f"  Error: {e}")
+            continue
+
+        # Performance
+        ret_color = "+" if r.total_return_pct >= 0 else ""
+        click.echo(f"  Return:      {ret_color}{r.total_return_pct:.1f}%  (${r.start_capital:.0f} → ${r.end_capital:.0f})")
+        click.echo(f"  Annualized:  {r.annualized_return_pct:+.1f}%")
+        click.echo(f"  Sharpe:      {r.sharpe_ratio:.2f}  |  Sortino: {r.sortino_ratio:.2f}")
+        click.echo(f"  Max DD:      {r.max_drawdown_pct:.1f}% (${r.max_drawdown_dollars:.0f})")
+
+        # Trade stats
+        click.echo(f"  Trades:      {r.total_trades}  ({r.winning_trades}W / {r.losing_trades}L)")
+        click.echo(f"  Win Rate:    {r.win_rate:.0f}%")
+        click.echo(f"  Avg Win:     {r.avg_win_pct:+.2f}%  |  Avg Loss: {r.avg_loss_pct:.2f}%")
+        click.echo(f"  Profit Factor: {r.profit_factor:.2f}")
+        click.echo(f"  Avg Hold:    {r.avg_hold_days:.0f} days")
+        click.echo(f"  Best:        {r.best_trade_pct:+.2f}%  |  Worst: {r.worst_trade_pct:.2f}%")
+        click.echo(f"  Streaks:     {r.max_consecutive_wins}W / {r.max_consecutive_losses}L")
+
+    click.echo("")
+
+
+@cli.command(name="risk")
+@click.argument("tickers", nargs=-1, required=True)
+@click.option("--account", default=1000.0, help="Portfolio value")
+def risk_report(tickers: tuple[str], account: float):
+    """Portfolio risk analysis (VaR, correlation, Monte Carlo)."""
+    from engine.risk import analyze_risk
+
+    logging.basicConfig(level=logging.WARNING)
+    ticker_list = list(tickers)
+    click.echo(f"Risk Analysis: {', '.join(ticker_list)}")
+    click.echo(f"Portfolio: ${account:,.0f}")
+    click.echo("=" * 65)
+
+    r = analyze_risk(ticker_list, portfolio_value=account)
+
+    # VaR
+    click.echo(f"\n  ── Value at Risk (Daily) ──")
+    click.echo(f"  VaR 95%:     -{r.var_95_pct:.2f}%  (${r.var_95_dollars:.0f})")
+    click.echo(f"  VaR 99%:     -{r.var_99_pct:.2f}%  (${r.var_99_dollars:.0f})")
+    click.echo(f"  CVaR 95%:    -{r.cvar_95_pct:.2f}%  (${r.cvar_95_dollars:.0f})")
+
+    # Drawdown
+    click.echo(f"\n  ── Drawdown ──")
+    click.echo(f"  Current:     {r.current_drawdown_pct:.1f}%")
+    click.echo(f"  Max:         {r.max_drawdown_pct:.1f}%")
+    click.echo(f"  Duration:    {r.drawdown_duration_days} days")
+
+    # Volatility
+    click.echo(f"\n  ── Volatility ──")
+    click.echo(f"  Annual:      {r.portfolio_volatility_annual:.1f}%  ({r.volatility_risk})")
+    click.echo(f"  Daily:       {r.portfolio_volatility_daily:.2f}%")
+    for t, v in r.individual_vols.items():
+        click.echo(f"    {t:8s}   {v:.1f}%")
+
+    # Correlation
+    click.echo(f"\n  ── Correlation ──")
+    click.echo(f"  Diversification ratio: {r.diversification_ratio:.2f}")
+    for pair in r.high_correlations[:5]:
+        icon = "⚠" if pair.risk_level == "high" else "·"
+        click.echo(f"    {icon} {pair.ticker_a:6s} / {pair.ticker_b:6s}  {pair.correlation:+.3f}  ({pair.risk_level})")
+
+    # Monte Carlo
+    click.echo(f"\n  ── Monte Carlo (5000 sims) ──")
+    click.echo(f"  30-day median:     {r.mc_median_30d:+.1f}%")
+    click.echo(f"  30-day worst 5%:   {r.mc_5th_pct_30d:+.1f}%")
+    click.echo(f"  30-day best 5%:    {r.mc_95th_pct_30d:+.1f}%")
+    click.echo(f"  Prob of loss (30d): {r.mc_prob_loss_30d:.0f}%")
+    click.echo(f"  Prob of 2x (1yr):  {r.mc_prob_double_1y:.1f}%")
+
+    # Risk scores
+    click.echo(f"\n  ── Risk Score ──")
+    click.echo(f"  Concentration:  {r.concentration_risk}")
+    click.echo(f"  Volatility:     {r.volatility_risk}")
+    click.echo(f"  Correlation:    {r.correlation_risk}")
+    click.echo(f"  Overall:        {r.overall_risk_score}/100")
+    click.echo("")
+
+
+@cli.command(name="ta")
+@click.argument("ticker")
+def tech_analysis(ticker: str):
+    """Full technical analysis for a ticker."""
+    from engine.ta import analyze_ta
+
+    logging.basicConfig(level=logging.WARNING)
+    click.echo(f"Technical Analysis: {ticker}")
+    click.echo("=" * 65)
+
+    r = analyze_ta(ticker)
+
+    # Signal header
+    signal_color = {"STRONG BUY": ">>>", "BUY": ">> ", "NEUTRAL": "-- ",
+                    "SELL": "<< ", "STRONG SELL": "<<<"}
+    click.echo(f"\n  {signal_color.get(r.composite_signal, '   ')} {r.composite_signal}  (score: {r.composite_score:+d})")
+    click.echo(f"  {r.ticker} @ ${r.price:,.2f}")
+    click.echo(f"  Bull: {r.bull_signals}  |  Bear: {r.bear_signals}  |  Neutral: {r.neutral_signals}")
+
+    # Moving averages
+    click.echo(f"\n  ── Moving Averages ({r.ma_signal}) ──")
+    for label, val in [("SMA 20", r.sma_20), ("SMA 50", r.sma_50), ("SMA 200", r.sma_200),
+                       ("EMA 12", r.ema_12), ("EMA 26", r.ema_26)]:
+        dist = (r.price - val) / val * 100
+        click.echo(f"  {label:8s}  ${val:>10,.2f}  ({dist:+.1f}%)")
+
+    # RSI
+    click.echo(f"\n  ── RSI ({r.rsi_signal}) ──")
+    bar_len = int(r.rsi_14 / 2)
+    bar = "█" * bar_len + "░" * (50 - bar_len)
+    click.echo(f"  RSI 14:  {r.rsi_14:.1f}  [{bar}]")
+
+    # MACD
+    click.echo(f"\n  ── MACD ({r.macd_signal}) ──")
+    click.echo(f"  Line:      {r.macd_line:+.4f}")
+    click.echo(f"  Signal:    {r.macd_signal_line:+.4f}")
+    click.echo(f"  Histogram: {r.macd_histogram:+.4f}")
+
+    # Bollinger Bands
+    click.echo(f"\n  ── Bollinger Bands (position: {r.bb_position}) ──")
+    click.echo(f"  Upper:   ${r.bb_upper:>10,.2f}")
+    click.echo(f"  Middle:  ${r.bb_middle:>10,.2f}")
+    click.echo(f"  Lower:   ${r.bb_lower:>10,.2f}")
+    click.echo(f"  Width:   {r.bb_width_pct:.1f}%")
+
+    # Stochastic
+    click.echo(f"\n  ── Stochastic ({r.stoch_signal}) ──")
+    click.echo(f"  %K: {r.stoch_k:.1f}  |  %D: {r.stoch_d:.1f}")
+
+    # Volume
+    click.echo(f"\n  ── Volume ({r.volume_signal}) ──")
+    click.echo(f"  Ratio:   {r.volume_ratio:.2f}x avg  |  OBV: {r.obv_trend}")
+
+    # ATR / Volatility
+    click.echo(f"\n  ── Volatility ({r.volatility}) ──")
+    click.echo(f"  ATR 14:  ${r.atr_14:.2f}  ({r.atr_pct:.1f}%)")
+
+    # Fibonacci
+    click.echo(f"\n  ── Fibonacci (nearest: {r.nearest_fib}) ──")
+    for level, val in r.fib_levels.items():
+        marker = " ◄" if abs(val - r.price) / r.price < 0.02 else ""
+        click.echo(f"  {level:6s}  ${val:>10,.2f}{marker}")
+
+    # Support / Resistance
+    click.echo(f"\n  ── Support / Resistance (20-day) ──")
+    click.echo(f"  Support:     ${r.support:>10,.2f}  ({(r.price - r.support)/r.price*100:+.1f}%)")
+    click.echo(f"  Resistance:  ${r.resistance:>10,.2f}  ({(r.resistance - r.price)/r.price*100:+.1f}%)")
+    click.echo("")
+
+
 @cli.command(name="lev")
 @click.option("--account", default=1000.0, help="Account value for position sizing")
 def leverage_scan(account: float):
