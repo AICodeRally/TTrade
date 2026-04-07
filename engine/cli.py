@@ -260,6 +260,57 @@ def sync():
             click.echo(f"Sync failed: {resp.status_code} {resp.text}", err=True)
 
 
+@cli.command(name="lev")
+@click.option("--account", default=1000.0, help="Account value for position sizing")
+def leverage_scan(account: float):
+    """Scan leveraged ETFs (SQQQ/TQQQ/SPXU/UPRO) for aggressive entries."""
+    from engine.market_data import get_daily_bars
+    from engine.market_state import evaluate_market_state
+    from engine.leverage import scan_leverage
+
+    logging.basicConfig(level=logging.WARNING)
+    config = TTRadeConfig()
+
+    try:
+        spy_bars = get_daily_bars("SPY", period_days=60)
+    except Exception as e:
+        click.echo(f"Failed to fetch SPY: {e}", err=True)
+        raise SystemExit(1)
+
+    market_state = evaluate_market_state(spy_bars, config)
+    click.echo(f"Market: {market_state.state.value} (slope={market_state.slope:.2f}, SPY=${market_state.current_price:.2f})")
+    click.echo(f"Account: ${account:,.0f}")
+    click.echo("")
+
+    signals = scan_leverage(market_state, config, account_value=account)
+
+    if not signals:
+        click.echo("No leveraged ETF signals (CHOP regime or no candidates).")
+        return
+
+    for s in signals:
+        icon = {"buy": ">>> BUY", "hold": "... WATCH", "avoid": "  x AVOID"}[s.action]
+        click.echo(f"{icon}  {s.ticker} (3x inverse {s.tracks}) @ ${s.price:.2f}")
+        click.echo(f"         Score: {s.score:.0f}/100")
+
+        for name, check in s.checks.items():
+            mark = "PASS" if check["passed"] else "FAIL"
+            click.echo(f"         {name:20s} {mark}  ({check['value']})")
+
+        if s.action == "buy":
+            click.echo(f"         ─────────────────────────────────")
+            click.echo(f"         Entry:    ${s.price:.2f}")
+            click.echo(f"         Stop:     ${s.stop_price:.2f} (-${s.price - s.stop_price:.2f})")
+            click.echo(f"         Target:   ${s.target_price:.2f} (+${s.target_price - s.price:.2f})")
+            click.echo(f"         Shares:   {s.position_size_shares}")
+            click.echo(f"         Size:     ${s.position_size_dollars:.0f} ({s.position_size_dollars/account*100:.0f}% of account)")
+            pnl_win = s.position_size_shares * (s.target_price - s.price)
+            pnl_loss = s.position_size_shares * (s.stop_price - s.price)
+            click.echo(f"         Win:      +${pnl_win:.0f} ({pnl_win/account*100:+.0f}% of account)")
+            click.echo(f"         Loss:     -${abs(pnl_loss):.0f} ({pnl_loss/account*100:+.0f}% of account)")
+        click.echo("")
+
+
 @cli.command()
 @click.option("--top", default=10, help="Show top N candidates")
 def screen(top: int):
